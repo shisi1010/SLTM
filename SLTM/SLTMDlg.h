@@ -116,7 +116,7 @@ public:
 	afx_msg void OnBnClickedButtonLogout();
 	void JpgData2Gui(char* pJpg, int nJpgLen, int Key);
 	afx_msg void OnBnClickedButtonGetHotPic();
-	CStatic m_staticImage;
+	CStatic m_staticImage1;
 	CStatic m_staticImage2;
 	CStatic m_staticImage3;
 	int llRealHandle;
@@ -132,5 +132,8 @@ public:
 	ChannelControl _ChannelControl1;
 	ChannelControl _ChannelControl2;
 
+	afx_msg HBRUSH OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor);
+	afx_msg void OnTimer(UINT_PTR nIDEvent);
+	afx_msg void OnBnClickedButtonTestdata();
 };
 

@@ -18,13 +18,16 @@
 #define new DEBUG_NEW
 #endif
 
-#define SETTING_FILE  _T("D://SLTMsetting.ini")
+#define SETTING_FILE  _T("C:\\SLTM\\SLTMsetting.ini")
 
 // CSLTMDlg 对话框
 float g_fTempData0[PIC_HEIGHT*PIC_WIDTH];
 float g_fTempData1[PIC_HEIGHT*PIC_WIDTH];
 float g_fTempData2[PIC_HEIGHT*PIC_WIDTH];
 
+int g_iFPS[3] = { 0, 0, 0 };
+
+CString g_devTitleName;
 HttpService router;
 http_server_t server;
 
@@ -54,7 +57,7 @@ void CSLTMDlg::DoDataExchange(CDataExchange* pDX)
 {
 	CDialogEx::DoDataExchange(pDX);
 	DDX_Text(pDX, IDC_STATIC_LOG, m_StaticLog);
-	DDX_Control(pDX, IDC_CAMERA1, m_staticImage);
+	DDX_Control(pDX, IDC_CAMERA1, m_staticImage1);
 	DDX_Control(pDX, IDC_CAMERA2, m_staticImage2);
 	DDX_Control(pDX, IDC_CAMERA3, m_staticImage3);
 }
@@ -67,6 +70,9 @@ BEGIN_MESSAGE_MAP(CSLTMDlg, CDialogEx)
 	ON_BN_CLICKED(IDC_BUTTON_LOGIN, &CSLTMDlg::OnBnClickedButtonLogin)
 	ON_BN_CLICKED(IDC_BUTTON_LOGOUT, &CSLTMDlg::OnBnClickedButtonLogout)
 	ON_BN_CLICKED(IDC_BUTTON_Get_Hot_Pic, &CSLTMDlg::OnBnClickedButtonGetHotPic)
+	ON_WM_CTLCOLOR()
+	ON_WM_TIMER()
+	ON_BN_CLICKED(IDC_BUTTON_TESTDATA, &CSLTMDlg::OnBnClickedButtonTestdata)
 END_MESSAGE_MAP()
 
 
@@ -85,8 +91,10 @@ BOOL CSLTMDlg::OnInitDialog()
 
 	// 读取IP与初始化海康威视SDK
 	ReadPara();
+	GetDlgItem(IDC_STATIC_TITLE)->SetWindowText(g_devTitleName);
 	// NET_DVR_Init();
 	StartHTTPServer();
+	SetTimer(1, 1000, NULL);
 #if 0
 	clDevice.setIP((LPSTR)(LPCTSTR)g_csDeviceIP[0]);
 	clDevice2.setIP((LPSTR)(LPCTSTR)g_csDeviceIP[1]);
@@ -148,14 +156,15 @@ BOOL WritePara()
 	devIP[1] = CString("192.168.0.102");
 	devIP[2] = CString("192.168.0.103");
 
+	CString devTitle = CString("1#钢包");
 	//WritePrivateProfileString(Section名,Key名,CString数据,文件地址);
 	
-	BOOL bwrite[3];
+	BOOL bwrite[4];
 	bwrite[0] = WritePrivateProfileString(_T("Device"), _T("IP0"), devIP[0], SETTING_FILE);
 	bwrite[1] = WritePrivateProfileString(_T("Device"), _T("IP1"), devIP[1], SETTING_FILE);
 	bwrite[2] = WritePrivateProfileString(_T("Device"), _T("IP2"), devIP[2], SETTING_FILE);
-
-	if (bwrite[0] && bwrite[1] && bwrite[2])
+	bwrite[3] = WritePrivateProfileString(_T("Title"), _T("Name"), devTitle, SETTING_FILE);
+	if (bwrite[0] && bwrite[1] && bwrite[2] && bwrite[3])
 	{
 		return TRUE;
 	}
@@ -173,25 +182,26 @@ BOOL CSLTMDlg::ReadPara()
 		WritePara();
 
 	CString devIP[3];
-
-	BOOL bwrite[3];
+	CString devTitle;
+	BOOL bwrite[4];
 	// Section 名,Key 名,默认值,存储字符串,字符串所允许的最大长度(15),文件路径
 	bwrite[0] = GetPrivateProfileString(_T("Device"), _T("IP0"), _T("NULL"), devIP[0].GetBufferSetLength(16), 16, SETTING_FILE);
 	bwrite[1] = GetPrivateProfileString(_T("Device"), _T("IP1"), _T("NULL"), devIP[1].GetBufferSetLength(16), 16, SETTING_FILE);
 	bwrite[2] = GetPrivateProfileString(_T("Device"), _T("IP2"), _T("NULL"), devIP[2].GetBufferSetLength(16), 16, SETTING_FILE);
-
+	bwrite[3] = GetPrivateProfileString(_T("Title"), _T("Name"), _T("NULL"), devTitle.GetBufferSetLength(16), 16, SETTING_FILE);
 	// 此操作对应于GetBufferSetLength(),紧跟其后，不能忽略。此操作的作用是将GetBufferSetLength()申请的多余的内存空间释放掉，以便于可以进行后续的如字符串+操作
 	devIP[0].ReleaseBuffer();
 	devIP[1].ReleaseBuffer();
 	devIP[2].ReleaseBuffer();
 
-	if (!(bwrite[0] && bwrite[1] && bwrite[2]))
+	if (!(bwrite[0] && bwrite[1] && bwrite[2] && bwrite[3]))
 	{
 		return FALSE;
 	}
 	for (int i = 0; i < 3; i++)
 	{
 		g_csDeviceIP[i] = devIP[i];
+		g_devTitleName = devTitle;
 	}
 	return TRUE;
 }
@@ -571,20 +581,24 @@ void CSLTMDlg::OnBnClickedButtonLogin()
 	} while (FALSE);
 	UpdateData(FALSE);
 #endif
-	
+	char CameraStall = 'B';
 	if (_ChannelControl0.IsRunning())
 	{
 
 	}
 	else {
+		
 		_ChannelControl0.ConnectIp((LPSTR)(LPCTSTR)g_csDeviceIP[0], 0);
+		_ChannelControl0.SetCameraStall(CameraStall);
 	}
 	if (_ChannelControl1.IsRunning())
 	{
 
 	}
 	else {
+		
 		_ChannelControl1.ConnectIp((LPSTR)(LPCTSTR)g_csDeviceIP[1], 1);
+		_ChannelControl1.SetCameraStall(CameraStall);
 	}
 
 	if (_ChannelControl2.IsRunning())
@@ -592,6 +606,7 @@ void CSLTMDlg::OnBnClickedButtonLogin()
 
 	}
 	else {
+		_ChannelControl2.SetCameraStall(CameraStall);
 		_ChannelControl2.ConnectIp((LPSTR)(LPCTSTR)g_csDeviceIP[2], 2);
 	}
 
@@ -636,7 +651,7 @@ void CSLTMDlg::OnBnClickedButtonLogout()
 		_ChannelControl2.Disconnect();
 	}
 
-	m_staticImage.Invalidate(TRUE);
+	m_staticImage1.Invalidate(TRUE);
 	m_staticImage2.Invalidate(TRUE);
 	m_staticImage3.Invalidate(TRUE);
 	
@@ -656,7 +671,7 @@ void CSLTMDlg::JpgData2Gui(char* pJpg, int nJpgLen, int Key)
 	switch(Key)
 	{
 		case 1:
-			DCposition = &m_staticImage;
+			DCposition = &m_staticImage1;
 			break;
 		case 2:
 			DCposition = &m_staticImage2;
@@ -1303,7 +1318,7 @@ void CSLTMDlg::BmpData2Gui1(unsigned char* pBits, int width, int height)
 	//fps[1] ++;
 	if (this->GetSafeHwnd())
 	{
-
+		g_iFPS[1] ++;
 		BITMAPINFO       dibInfo;
 		// 组装位图信息头  
 		dibInfo.bmiHeader.biSize = sizeof(BITMAPINFO);
@@ -1336,7 +1351,7 @@ void CSLTMDlg::BmpData2Gui2(unsigned char* pBits, int width, int height)
 	//fps[2] ++;
 	if (this->GetSafeHwnd())
 	{
-
+		g_iFPS[2] ++;
 		BITMAPINFO       dibInfo;
 		// 组装位图信息头  
 		dibInfo.bmiHeader.biSize = sizeof(BITMAPINFO);
@@ -1366,10 +1381,9 @@ void CSLTMDlg::BmpData2Gui2(unsigned char* pBits, int width, int height)
 
 void CSLTMDlg::BmpData2Gui0(unsigned char* pBits, int width, int height)
 {
-	//fps[0] ++;
 	if (this->GetSafeHwnd())
 	{
-
+		g_iFPS[0] ++;
 		BITMAPINFO       dibInfo;
 		// 组装位图信息头  
 		dibInfo.bmiHeader.biSize = sizeof(BITMAPINFO);
@@ -1384,12 +1398,12 @@ void CSLTMDlg::BmpData2Gui0(unsigned char* pBits, int width, int height)
 		dibInfo.bmiHeader.biClrUsed = 0;
 		dibInfo.bmiHeader.biClrImportant = 0;
 
-		CClientDC dc(&m_staticImage);
+		CClientDC dc(&m_staticImage1);
 
 		SetStretchBltMode(dc.GetSafeHdc(), STRETCH_HALFTONE);
 
 		RECT rect;
-		m_staticImage.GetClientRect(&rect);
+		m_staticImage1.GetClientRect(&rect);
 
 		int nResult = StretchDIBits(dc.GetSafeHdc(), 0, 0, rect.right - rect.left, rect.bottom - rect.top, 0, 0, width, height, pBits, &dibInfo, DIB_RGB_COLORS, SRCCOPY);
 
@@ -1449,6 +1463,25 @@ void SaveSingleTempDataToFile(float *pData, char *pName, int dev)
 	fwrite(pData, len_float, PIC_WIDTH*PIC_HEIGHT, conti_buffer);
 	fclose(conti_buffer);
 }
+std::string writeJson(string baoNumber, string baoArea, string baoTime)
+{
+	hv::Json root;
+	std::string out;
+
+	root["msg"]["baoNumber"] = baoNumber;
+	root["msg"]["baoArea"] = baoArea;
+	root["msg"]["baoTime"] = baoTime;
+
+	out = root.dump();
+	return out;
+}
+
+UINT SendJsonMessage(LPVOID pParam)
+{
+	string jsonStr = writeJson("11", "1", "2022-07-27 11:38:15");
+	auto resp = requests::post("127.0.0.1:8000/assets/report/", jsonStr);
+	return 0;
+}
 
 UINT HTTPServerProc(LPVOID pParam)
 {
@@ -1466,8 +1499,20 @@ UINT HTTPServerProc(LPVOID pParam)
 		return resp->String("关闭画面");
 	});
 
-	router.GET("/paths", [](HttpRequest* req, HttpResponse* resp) {
-		return resp->Json(123);
+	router.GET("/heartbeat", [pDlg](HttpRequest* req, HttpResponse* resp) {
+		CTime tNow = CTime::GetCurrentTime();
+
+		__int64 iNow = tNow.GetTime();
+		int a = iNow % 10000;
+		return resp->String(to_string(a).c_str());
+	});
+
+	router.GET("/fps", [pDlg](HttpRequest* req, HttpResponse* resp) {
+		string sfps1 = to_string(g_iFPS[0]);
+		string sfps2 = to_string(g_iFPS[1]);
+		string sfps3 = to_string(g_iFPS[2]);
+		string sfpssend = sfps1 + " " + sfps2 + " " + sfps3;
+		return resp->String(sfpssend.c_str());
 	});
 
 	server.port = 8765;
@@ -1629,3 +1674,41 @@ bool CSLTMDlg::GetCentroid(float* tempMatrix, Point &pCentroid, Point &pMaxTempP
 //		}
 //	}
 //}
+
+HBRUSH CSLTMDlg::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
+{
+	HBRUSH hbr = CDialogEx::OnCtlColor(pDC, pWnd, nCtlColor);
+
+	// TODO:  在此更改 DC 的任何特性
+	if (pWnd->GetDlgCtrlID() == IDC_STATIC_TITLE)
+	{
+		CFont m_font;
+		m_font.CreatePointFont(150, "MICROSOFT YAHEI");//代表15号字体，华文行楷
+		pDC->SetTextColor(RGB(0, 0, 250));
+		pDC->SelectObject(&m_font);
+	}
+	// TODO:  如果默认的不是所需画笔，则返回另一个画笔
+	return hbr;
+}
+
+
+void CSLTMDlg::OnTimer(UINT_PTR nIDEvent)
+{
+	// TODO: 在此添加消息处理程序代码和/或调用默认值
+	if (nIDEvent == 1)
+	{
+		CString csFPS;
+		csFPS.Format("%d %d %d", g_iFPS[0], g_iFPS[1], g_iFPS[2]);
+
+		GetDlgItem(IDC_STATIC_STATUS)->SetWindowText(csFPS);
+		memset(g_iFPS, 0, sizeof(g_iFPS));
+	}
+	CDialogEx::OnTimer(nIDEvent);
+}
+
+
+void CSLTMDlg::OnBnClickedButtonTestdata()
+{
+	// TODO: 在此添加控件通知处理程序代码
+	AfxBeginThread(SendJsonMessage, this);
+}
