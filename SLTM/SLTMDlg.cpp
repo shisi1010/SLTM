@@ -11,6 +11,8 @@
 #include "plaympeg4.h"
 #endif
 
+#include <map>
+#include <fstream>
 #include "hv/HttpServer.h"
 #include "hv/requests.h"
 
@@ -20,12 +22,31 @@
 
 #define SETTING_FILE  _T("C:\\SLTM\\SLTMsetting.ini")
 
+//#define WRITE_FILE _T("D:\\SLTM\\123.tmp")
+#define WRITE_FILE _T("\\\\192.168.1.200\\1\\123.tmp")
+
 // CSLTMDlg 对话框
 float g_fTempData0[PIC_HEIGHT*PIC_WIDTH];
 float g_fTempData1[PIC_HEIGHT*PIC_WIDTH];
 float g_fTempData2[PIC_HEIGHT*PIC_WIDTH];
 
+CTime ctInitTime(2010, 10, 10, 10, 10, 10);
+
+// 文件保存用
+CString g_Baohao;
+int g_BaohaoList[11];
+LONG g_BoahaoTimeList[11];
+int g_BaohaoKey = 0;
+
+std::map<CString, CString>g_mapPositionName = {
+	{"1", "1号LF精炼位"}, {"2","1号炉钢包"}, {"3","2号炉钢包"}, {"4","1号RH精炼位"},
+	{"5", "2号LF精炼位"}, {"6","3号炉钢包"}, {"7","4号炉钢包"}, {"8","2号RH精炼位"},
+	{"9", "1步铁包"}, {"10","2步铁包"}
+};
+
+
 int g_iFPS[3] = { 0, 0, 0 };
+__time64_t g_tGetFileTime[3] = { 0, 0, 0 };
 
 CString g_devTitleName;
 HttpService router;
@@ -44,9 +65,6 @@ CSLTMDlg::CSLTMDlg(CWnd* pParent /*=nullptr*/)
 	, m_visJpegPicEnabled(FALSE)
 	//, lUserID(-1)
 	, lChannel(0)
-	, llRealHandle(-1)
-	, llRealHandle2(-1)
-	, llRealHandle3(-1)
 	, lRealTimeInfoHandle(-1)
 	, m_StaticLog(_T(""))
 {
@@ -73,6 +91,7 @@ BEGIN_MESSAGE_MAP(CSLTMDlg, CDialogEx)
 	ON_WM_CTLCOLOR()
 	ON_WM_TIMER()
 	ON_BN_CLICKED(IDC_BUTTON_TESTDATA, &CSLTMDlg::OnBnClickedButtonTestdata)
+//	ON_WM_ERASEBKGND()
 END_MESSAGE_MAP()
 
 
@@ -88,20 +107,27 @@ BOOL CSLTMDlg::OnInitDialog()
 	SetIcon(m_hIcon, FALSE);		// 设置小图标
 
 	ShowWindow(SW_MAXIMIZE);
+	// 背景画刷
+	m_brushBack.CreateSolidBrush(RGB(9, 2, 88));
 
 	// 读取IP与初始化海康威视SDK
 	ReadPara();
 	GetDlgItem(IDC_STATIC_TITLE)->SetWindowText(g_devTitleName);
-	// NET_DVR_Init();
+
 	StartHTTPServer();
-	SetTimer(1, 1000, NULL);
-#if 0
-	clDevice.setIP((LPSTR)(LPCTSTR)g_csDeviceIP[0]);
-	clDevice2.setIP((LPSTR)(LPCTSTR)g_csDeviceIP[1]);
-	clDevice3.setIP((LPSTR)(LPCTSTR)g_csDeviceIP[2]);
+	SetTimer(nIDEventUpdateFPS, 1000, NULL);
+
+#if HKWS
+	NET_DVR_Init();
+	clDevice[0].setIP("192.168.1.31");
+	clDevice[1].setIP("192.168.1.32");
+	clDevice[2].setIP("192.168.1.33");
 #endif
 
-
+	SetTimer(nIDEventUpdateAlert, 1000, NULL);
+	GetDlgItem(IDC_STATIC_THROUGH)->ShowWindow(FALSE);
+	GetDlgItem(IDC_STATIC_TEMPALERT)->ShowWindow(FALSE);
+	OnBnClickedButtonLogin();
 	return TRUE;  // 除非将焦点设置到控件，否则返回 TRUE
 }
 
@@ -111,7 +137,7 @@ BOOL CSLTMDlg::OnInitDialog()
 
 void CSLTMDlg::OnPaint()
 {
-	if (IsIconic())
+	if (IsIconic()) // 如果最小化就画图标
 	{
 		CPaintDC dc(this); // 用于绘制的设备上下文
 
@@ -122,6 +148,7 @@ void CSLTMDlg::OnPaint()
 		int cyIcon = GetSystemMetrics(SM_CYICON);
 		CRect rect;
 		GetClientRect(&rect);
+
 		int x = (rect.Width() - cxIcon + 1) / 2;
 		int y = (rect.Height() - cyIcon + 1) / 2;
 
@@ -130,6 +157,13 @@ void CSLTMDlg::OnPaint()
 	}
 	else
 	{
+
+		CPaintDC dc(this); 
+		CRect rect;
+		GetClientRect(&rect);
+		// 设置背景
+		dc.FillSolidRect(rect, RGB(9, 2, 88));
+
 		CDialogEx::OnPaint();
 	}
 }
@@ -156,14 +190,14 @@ BOOL WritePara()
 	devIP[1] = CString("192.168.0.102");
 	devIP[2] = CString("192.168.0.103");
 
-	CString devTitle = CString("1#钢包");
+	CString devTitle = CString("1");
 	//WritePrivateProfileString(Section名,Key名,CString数据,文件地址);
 	
 	BOOL bwrite[4];
 	bwrite[0] = WritePrivateProfileString(_T("Device"), _T("IP0"), devIP[0], SETTING_FILE);
 	bwrite[1] = WritePrivateProfileString(_T("Device"), _T("IP1"), devIP[1], SETTING_FILE);
 	bwrite[2] = WritePrivateProfileString(_T("Device"), _T("IP2"), devIP[2], SETTING_FILE);
-	bwrite[3] = WritePrivateProfileString(_T("Title"), _T("Name"), devTitle, SETTING_FILE);
+	bwrite[3] = WritePrivateProfileString(_T("Title"), _T("Position"), devTitle, SETTING_FILE);
 	if (bwrite[0] && bwrite[1] && bwrite[2] && bwrite[3])
 	{
 		return TRUE;
@@ -188,24 +222,39 @@ BOOL CSLTMDlg::ReadPara()
 	bwrite[0] = GetPrivateProfileString(_T("Device"), _T("IP0"), _T("NULL"), devIP[0].GetBufferSetLength(16), 16, SETTING_FILE);
 	bwrite[1] = GetPrivateProfileString(_T("Device"), _T("IP1"), _T("NULL"), devIP[1].GetBufferSetLength(16), 16, SETTING_FILE);
 	bwrite[2] = GetPrivateProfileString(_T("Device"), _T("IP2"), _T("NULL"), devIP[2].GetBufferSetLength(16), 16, SETTING_FILE);
-	bwrite[3] = GetPrivateProfileString(_T("Title"), _T("Name"), _T("NULL"), devTitle.GetBufferSetLength(16), 16, SETTING_FILE);
+	bwrite[3] = GetPrivateProfileString(_T("Title"), _T("Position"), _T("NULL"), devTitle.GetBufferSetLength(16), 16, SETTING_FILE);
 	// 此操作对应于GetBufferSetLength(),紧跟其后，不能忽略。此操作的作用是将GetBufferSetLength()申请的多余的内存空间释放掉，以便于可以进行后续的如字符串+操作
 	devIP[0].ReleaseBuffer();
 	devIP[1].ReleaseBuffer();
 	devIP[2].ReleaseBuffer();
-
+	devTitle.ReleaseBuffer();
 	if (!(bwrite[0] && bwrite[1] && bwrite[2] && bwrite[3]))
 	{
 		return FALSE;
 	}
-	for (int i = 0; i < 3; i++)
+	for (int i = 0; i < DEV_NUM; i++)
 	{
 		g_csDeviceIP[i] = devIP[i];
-		g_devTitleName = devTitle;
+		g_devTitleName = g_mapPositionName[devTitle];
 	}
 	return TRUE;
 }
 
+void WriteTempDataFile(CString FilePath, CString FileName)
+{
+	std::ofstream ofile;
+	ofile.open(FilePath, ios::out | ios::app);
+	if (!ofile.is_open())
+		return;
+	else
+	{
+		ofile.write(reinterpret_cast<const char*>(g_fTempData0), std::streamsize(PIC_SIZE * sizeof(float)));
+		ofile << g_fTempData0;
+	}
+
+	ofile.close();
+	return;
+}
 
 /*************************************************
 函数名:    	GetP2PParam
@@ -267,78 +316,32 @@ int CSLTMDlg::GetP2PParam()
 	lpOutputParam.lpOutBuffer = OutBuffer;
 	lpOutputParam.dwOutBufferSize = sizeof(OutBuffer);
 
-	if (NET_DVR_STDXMLConfig(clDevice.UserID, &lpInputParam, &lpOutputParam))
+	for (int i = 0; i < 3; i++)
 	{
-		cmdCount = getXmlNodeList((char*)lpOutputParam.lpOutBuffer, "<PixelToPixelParam", xmlNodeList);
-		if (0 == cmdCount)
+		if (NET_DVR_STDXMLConfig(clDevice[i].UserID, &lpInputParam, &lpOutputParam))
 		{
-			SetDlgItemText(IDC_STATIC_LOG, "No Test Parameter");
+			cmdCount = getXmlNodeList((char*)lpOutputParam.lpOutBuffer, "<PixelToPixelParam", xmlNodeList);
+			if (0 == cmdCount)
+			{
+				SetDlgItemText(IDC_STATIC_LOG, "No Test Parameter");
+			}
+			else
+			{
+				getXmlNodeValue(xml_node_tbl, sizeof(xml_node_tbl) / sizeof(xml_node_tbl[0]), xmlNodeList, cmdCount);
+			}
+
+			m_StaticLog.Format("%s", "Get pixelToPixelParam success!");
+			csLogString.Format("Get P2P param success! channel:%d", channel);
+			ret = 0;
 		}
 		else
 		{
-			getXmlNodeValue(xml_node_tbl, sizeof(xml_node_tbl) / sizeof(xml_node_tbl[0]), xmlNodeList, cmdCount);
+			Log.Format("Get pixelToPixelParam failed!%s(%d)", NET_DVR_GetErrorMsg(), NET_DVR_GetLastError());
+			m_StaticLog.Format("%s", Log);
+			csLogString.Format("Get P2P param failed! channel:%d, %s(%d)", channel, NET_DVR_GetErrorMsg(), NET_DVR_GetLastError());
+			ret = -1;
 		}
-
-		m_StaticLog.Format("%s", "Get pixelToPixelParam success!");
-		csLogString.Format("Get P2P param success! channel:%d", channel);
-		ret = 0;
 	}
-	else
-	{
-		Log.Format("Get pixelToPixelParam failed!%s(%d)", NET_DVR_GetErrorMsg(), NET_DVR_GetLastError());
-		m_StaticLog.Format("%s", Log);
-		csLogString.Format("Get P2P param failed! channel:%d, %s(%d)", channel, NET_DVR_GetErrorMsg(), NET_DVR_GetLastError());
-		ret = -1;
-	}
-
-	if (NET_DVR_STDXMLConfig(clDevice2.UserID, &lpInputParam, &lpOutputParam))
-	{
-		cmdCount = getXmlNodeList((char*)lpOutputParam.lpOutBuffer, "<PixelToPixelParam", xmlNodeList);
-		if (0 == cmdCount)
-		{
-			SetDlgItemText(IDC_STATIC_LOG, "No Test Parameter");
-		}
-		else
-		{
-			getXmlNodeValue(xml_node_tbl, sizeof(xml_node_tbl) / sizeof(xml_node_tbl[0]), xmlNodeList, cmdCount);
-		}
-
-		m_StaticLog.Format("%s", "Get pixelToPixelParam success!");
-		csLogString.Format("Get P2P param success! channel:%d", channel);
-		ret = 0;
-	}
-	else
-	{
-		Log.Format("Get pixelToPixelParam failed!%s(%d)", NET_DVR_GetErrorMsg(), NET_DVR_GetLastError());
-		m_StaticLog.Format("%s", Log);
-		csLogString.Format("Get P2P param failed! channel:%d, %s(%d)", channel, NET_DVR_GetErrorMsg(), NET_DVR_GetLastError());
-		ret = -1;
-	}
-
-	if (NET_DVR_STDXMLConfig(clDevice3.UserID, &lpInputParam, &lpOutputParam))
-	{
-		cmdCount = getXmlNodeList((char*)lpOutputParam.lpOutBuffer, "<PixelToPixelParam", xmlNodeList);
-		if (0 == cmdCount)
-		{
-			SetDlgItemText(IDC_STATIC_LOG, "No Test Parameter");
-		}
-		else
-		{
-			getXmlNodeValue(xml_node_tbl, sizeof(xml_node_tbl) / sizeof(xml_node_tbl[0]), xmlNodeList, cmdCount);
-		}
-
-		m_StaticLog.Format("%s", "Get pixelToPixelParam success!");
-		csLogString.Format("Get P2P param success! channel:%d", channel);
-		ret = 0;
-	}
-	else
-	{
-		Log.Format("Get pixelToPixelParam failed!%s(%d)", NET_DVR_GetErrorMsg(), NET_DVR_GetLastError());
-		m_StaticLog.Format("%s", Log);
-		csLogString.Format("Get P2P param failed! channel:%d, %s(%d)", channel, NET_DVR_GetErrorMsg(), NET_DVR_GetLastError());
-		ret = -1;
-	}
-
 	return ret;
 }
 #endif
@@ -553,108 +556,76 @@ string CameraLink::Disconnect()
 **************************************************/
 void CSLTMDlg::OnBnClickedButtonLogin()
 {
-	// TODO:  在此添加控件通知处理程序代码
-#if 0
+#if HKWS
 	UpdateData(TRUE);
 	CString LogString;
 	do
 	{
-		string sLink = clDevice.Connect();
-		string sLink2 = clDevice2.Connect();
-		string sLink3 = clDevice3.Connect();
-		if (sLink!=""|| sLink2 != "" || sLink3 != "")
-		//if(sLink != "")
-		{
-			//m_StaticLog.Format("1#%s", sLink);
-			m_StaticLog.Format("1#%s 2#%s 3#%s", sLink.c_str(), sLink2.c_str(), sLink3.c_str());
-			break;
-		}
-		//lUserID = clDevice.UserID;
+		string sLink1 = clDevice[0].Connect();
+		string sLink2 = clDevice[1].Connect();
+		string sLink3 = clDevice[2].Connect();
+		if (sLink1!=""|| sLink2 != "" || sLink3 != "")
+		m_StaticLog.Format("1#%s 2#%s 3#%s", sLink1.c_str(), sLink2.c_str(), sLink3.c_str());
 
 		GetP2PParam();
-
-		m_StaticLog.Format("登陆：登陆成功！");
+		//m_StaticLog.Format("登陆：登陆成功！");
 		GetDlgItem(IDC_BUTTON_LOGIN)->EnableWindow(FALSE);
 		GetDlgItem(IDC_BUTTON_LOGOUT)->EnableWindow(TRUE);
 		GetDlgItem(IDC_BUTTON_Get_Hot_Pic)->EnableWindow(TRUE);
-
 	} while (FALSE);
 	UpdateData(FALSE);
+#else
+	for (int i = 0; i < DEV_NUM; i++)
+	{
+		if (!CameraCtrl[i].IsRunning())
+		{
+			// IP
+			CameraCtrl[i].ConnectIp((LPSTR)(LPCTSTR)g_csDeviceIP[i], i);
+
+			// 设置B档 高温档位
+			CameraCtrl[i].SetCameraStall('B');
+		}
+	}
 #endif
-	char CameraStall = 'B';
-	if (_ChannelControl0.IsRunning())
-	{
-
-	}
-	else {
-		
-		_ChannelControl0.ConnectIp((LPSTR)(LPCTSTR)g_csDeviceIP[0], 0);
-		_ChannelControl0.SetCameraStall(CameraStall);
-	}
-	if (_ChannelControl1.IsRunning())
-	{
-
-	}
-	else {
-		
-		_ChannelControl1.ConnectIp((LPSTR)(LPCTSTR)g_csDeviceIP[1], 1);
-		_ChannelControl1.SetCameraStall(CameraStall);
-	}
-
-	if (_ChannelControl2.IsRunning())
-	{
-
-	}
-	else {
-		_ChannelControl2.SetCameraStall(CameraStall);
-		_ChannelControl2.ConnectIp((LPSTR)(LPCTSTR)g_csDeviceIP[2], 2);
-	}
-
 }
 
 
 void CSLTMDlg::OnBnClickedButtonLogout()
 {
-#if 0
+#if HKWS
 	UpdateData(TRUE);
 	CString LogString;
 	int iItemCount = 0;
 
 	do
 	{
-		string sLink = clDevice.Disconnect();
-		string sLink2 = clDevice2.Disconnect();
-		string sLink3 = clDevice3.Disconnect();
-		if (sLink != "" || sLink2 != "" || sLink3 != "")
+		string sLink1 = clDevice[0].Disconnect();
+		string sLink2 = clDevice[1].Disconnect();
+		string sLink3 = clDevice[2].Disconnect();
+		if (sLink1 != "" || sLink2 != "" || sLink3 != "")
 		{
-			m_StaticLog.Format("1#%s 2#%s 3#%s", sLink.c_str(), sLink2.c_str(), sLink3.c_str());
+			m_StaticLog.Format("1#%s 2#%s 3#%s", sLink1.c_str(), sLink2.c_str(), sLink3.c_str());
 			break;
 		}
 		m_StaticLog.Format("注销：注销成功！");
 		GetDlgItem(IDC_BUTTON_LOGIN)->EnableWindow(TRUE);
 		GetDlgItem(IDC_BUTTON_LOGOUT)->EnableWindow(FALSE);
-		//GetDlgItem(IDC_BUTTON_GET_HOT_PIC)->EnableWindow(FALSE);
 
 	} while (FALSE);
 	UpdateData(FALSE);
-#endif
-	if (_ChannelControl0.IsRunning())
-	{
-		_ChannelControl0.Disconnect();
-	}
-	if (_ChannelControl1.IsRunning())
-	{
-		_ChannelControl1.Disconnect();
-	}
-	if (_ChannelControl2.IsRunning())
-	{
-		_ChannelControl2.Disconnect();
-	}
 
+#else
+	for (int i = 0; i < DEV_NUM; i++)
+	{
+		if (CameraCtrl[i].IsRunning())
+		{
+			CameraCtrl[i].Disconnect();
+		}
+	}
 	m_staticImage1.Invalidate(TRUE);
 	m_staticImage2.Invalidate(TRUE);
 	m_staticImage3.Invalidate(TRUE);
-	
+#endif
 }
 
 
@@ -667,21 +638,8 @@ void CSLTMDlg::OnBnClickedButtonLogout()
 **************************************************/
 void CSLTMDlg::JpgData2Gui(char* pJpg, int nJpgLen, int Key)
 {
-	CStatic* DCposition = NULL;
-	switch(Key)
-	{
-		case 1:
-			DCposition = &m_staticImage1;
-			break;
-		case 2:
-			DCposition = &m_staticImage2;
-			break;
-		case 3:
-			DCposition = &m_staticImage3;
-			break;
-	}
+	CStatic* DCposition = mapStaticPosition[Key-1];
 
-	//m_iRawFps++;
 	if (this->GetSafeHwnd())
 	{
 		if (pJpg && nJpgLen)
@@ -698,51 +656,6 @@ void CSLTMDlg::JpgData2Gui(char* pJpg, int nJpgLen, int Key)
 				image.Destroy();
 				if (SUCCEEDED(image.Load(pStream)))
 				{
-					//CImageToMat(image, g_afMat);
-					//// Use pDC here
-					//g_iPointLeftTopX = _ttoi(g_csPointLeftTopX);
-					//g_iPointLeftTopY = _ttoi(g_csPointLeftTopY);
-					//g_iPointRightBottomX = _ttoi(g_csPointRightBottomX);
-					//g_iPointRightBottomY = _ttoi(g_csPointRightBottomY);
-
-					//if (g_iPointLeftTopX >= 0 && g_iPointLeftTopX < g_iPointRightBottomX
-					//	&& g_iPointLeftTopY >= 0 && g_iPointLeftTopY < g_iPointRightBottomY
-					//	&& g_iPointRightBottomX < PIC_WIDTH && g_iPointRightBottomY < PIC_HEIGHT
-					//	&& g_bShowArea)
-					//{
-					//	CDC* pDC = CDC::FromHandle(image.GetDC());
-					//	CPen p(PS_DOT, 0.9, RGB(255, 255, 255));
-					//	pDC->SelectStockObject(NULL_BRUSH);
-					//	pDC->SelectObject(&p);
-					//	pDC->Rectangle(g_iPointLeftTopX, g_iPointLeftTopY, g_iPointRightBottomX, g_iPointRightBottomY);
-					//	image.ReleaseDC();
-
-					//	cv::Point poA = cv::Point(g_iPointLeftTopX, g_iPointLeftTopY);
-					//	cv::Point poB = cv::Point(g_iPointRightBottomX, g_iPointRightBottomY);
-					//	cv::Rect rectArea = cv::Rect(poA, poB);
-
-					//	cv::Mat matArea = g_afMat(rectArea);
-
-					//	cv::Mat TempDataMat(PIC_HEIGHT, PIC_WIDTH, CV_32FC1, &g_afTemp);
-					//	cv::Mat matAreatmp = TempDataMat(rectArea);
-
-					//	cv::Scalar meanValue;
-					//	meanValue = cv::mean(matAreatmp);
-
-					//	double dminTemp = 10000.0;
-					//	double dmaxTemp = -10000.0;
-
-					//	minMaxIdx(matAreatmp, &dminTemp, &dmaxTemp);
-
-					//	CString csValue;
-					//	//csValue.Format("区域温度均值为：[%.2f, %.2f, %.2f, %.2f]", meanValue[0], meanValue[1], meanValue[2], meanValue[3]);
-					//	csValue.Format("区域温度均值为：%.2f ℃\n区域最高温度：%.2f ℃\n区域最低温度：%.2f ℃\n", meanValue[0], dmaxTemp, dminTemp);
-					//	GetDlgItem(IDC_STATIC_AREA)->SetWindowText(csValue);
-					//	static CImage ciArea;
-					//	MatToCImage(matArea, ciArea);
-					//	AreaCImage2Gui(&ciArea);
-					//}
-					//CImage2Gui(&image);
 					RECT rect;
 					::GetClientRect(DCposition->GetSafeHwnd(), &rect);
 
@@ -926,6 +839,8 @@ void CameraDev::SetUserID(LONG ID, int iPosition)
 	this->iDeviceKey = iPosition;
 }
 
+/*
+
 UINT ThreadGetHotPicDataMutil(LPVOID lpParam)
 {
 	CSLTMDlg* pDlg = (CSLTMDlg*)lpParam;
@@ -1045,6 +960,8 @@ UINT ThreadGetHotPicDataMutil3(LPVOID lpParam)
 	}
 	return 0;
 }
+*/
+
 
 UINT ThreadGetHotPic1(LPVOID lpParam)
 {
@@ -1052,9 +969,10 @@ UINT ThreadGetHotPic1(LPVOID lpParam)
 	CameraDev a;
 	CameraDev b;
 	CameraDev c;
-	a.SetUserID(pDlg->clDevice.UserID, 1);
-	b.SetUserID(pDlg->clDevice2.UserID, 2);
-	c.SetUserID(pDlg->clDevice3.UserID, 3);
+	a.SetUserID(pDlg->clDevice[0].UserID, 1);
+	b.SetUserID(pDlg->clDevice[1].UserID, 2);
+	c.SetUserID(pDlg->clDevice[2].UserID, 3);
+
 	int i; CString stLogString;
 	if (a.lUserID < 0 || b.lUserID < 0 || c.lUserID < 0)
 	{
@@ -1103,22 +1021,6 @@ UINT ThreadGetHotPic1(LPVOID lpParam)
 			long t4 = (end - start);
 			ot.Format("%d %d %d %d\n", t1, t2, t3, t4);
 			OutputDebugString(ot);
-			//判断抓图数据是否正确
-			//if (a.struJpegWithAppendData.dwP2PDataLen != 4 * a.struJpegWithAppendData.dwJpegPicWidth * a.struJpegWithAppendData.dwJpegPicHeight)
-			//{
-			//	stLogString.Format("抓拍：返回的数据长度有误！P2PDataLen[%d]!=4*JpegPicWidth[%d]*JpegPicHeight[%d]",
-			//		a.struJpegWithAppendData.dwP2PDataLen, a.struJpegWithAppendData.dwJpegPicWidth, a.struJpegWithAppendData.dwJpegPicHeight);
-			//	pDlg->SetDlgItemText(IDC_STATIC_LOG, stLogString);
-			//	a.failedTime++;
-			//	continue;
-			//}
-
-			//a.minTemp = 10000.0;
-			//a.maxTemp = -10000.0;
-			//ret = AnalysisHotPicData(struJpegWithAppendData.pP2PDataBuff, struJpegWithAppendData.dwJpegPicHeight, struJpegWithAppendData.dwJpegPicWidth,
-				//NULL, 0, &maxTemp, &minTemp);
-
-			/*pDlg->JpgData2Gui(a.struJpegWithAppendData.pJpegPicBuff, a.struJpegWithAppendData.dwJpegPicLen, a.iDeviceKey);*/
 		}
 	}
 
@@ -1130,110 +1032,14 @@ UINT ThreadGetHotPic1(LPVOID lpParam)
 	return 1;
 }
 
-
-/****************************************************
-函数名:   ThreadGetHotPicData
-函数描述:  读图线程
-输入参数:  无
-输出参数:  无
-返回值:
-*****************************************************/
-UINT ThreadGetHotPicData(LPVOID lpParam)
-{
-	CString stLogString;
-	int ret = 0;
-	CString csLogString;
-	int failedTime = 0;
-	int i = 0;
-
-	CSLTMDlg* pDlg = (CSLTMDlg*)lpParam;
-	int getHotPic_time = 0;
-
-	if (pDlg->clDevice.UserID < 0)
-	{
-		pDlg->SetDlgItemText(IDC_STATIC_LOG, "抓热图：还未登陆！");
-	}
-	else
-	{
-		//将按钮置为停止状态
-		pDlg->b_getHotPic = TRUE;
-		pDlg->SetDlgItemTextA(IDC_BUTTON_Get_Hot_Pic, _T("停止画面"));
-
-		NET_DVR_JPEGPICTURE_WITH_APPENDDATA struJpegWithAppendData = { 0 };
-
-		const int ciPictureBufSize = 2 * 1024 * 1024;//2M
-		const int ciVisPictureBufSize = 4 * 1024 * 1024;//2M
-		char* ucJpegBuf = new char[ciPictureBufSize];
-		char* ucAppendDataBuf = new char[ciPictureBufSize];
-		char* ucvisJpegBuf = new char[ciVisPictureBufSize];
-
-		memset(ucJpegBuf, 0, ciPictureBufSize);
-		memset(ucAppendDataBuf, 0, ciPictureBufSize);
-		memset(ucvisJpegBuf, 0, ciVisPictureBufSize);
-
-		struJpegWithAppendData.pJpegPicBuff = ucJpegBuf;
-		struJpegWithAppendData.pP2PDataBuff = ucAppendDataBuf;
-		struJpegWithAppendData.pVisiblePicBuff = ucvisJpegBuf;
-
-		float minTemp = 0, maxTemp = 0;
-		int channel = 1;
-
-		for (i = 0; ((i < getHotPic_time) || (0 == getHotPic_time)) && (TRUE == pDlg->b_getHotPic); i++)
-		{
-			//获取热图的SDK接口
-			if (TRUE != NET_DVR_CaptureJPEGPicture_WithAppendData(pDlg->clDevice.UserID, channel, &struJpegWithAppendData))
-			{
-				stLogString.Format("抓热图失败！错误信息：%s(%d)", NET_DVR_GetErrorMsg(), NET_DVR_GetLastError());
-				pDlg->SetDlgItemText(IDC_STATIC_LOG, stLogString);
-				csLogString.Format("Get the %dth hot pic failed! %s(%d)", i + 1, NET_DVR_GetErrorMsg(), NET_DVR_GetLastError());
-				failedTime++;
-				continue;
-			}
-
-			//判断抓图数据是否正确
-			if (struJpegWithAppendData.dwP2PDataLen != 4 * struJpegWithAppendData.dwJpegPicWidth * struJpegWithAppendData.dwJpegPicHeight)
-			{
-				stLogString.Format("抓拍：返回的数据长度有误！P2PDataLen[%d]!=4*JpegPicWidth[%d]*JpegPicHeight[%d]",
-					struJpegWithAppendData.dwP2PDataLen, struJpegWithAppendData.dwJpegPicWidth, struJpegWithAppendData.dwJpegPicHeight);
-				pDlg->SetDlgItemText(IDC_STATIC_LOG, stLogString);
-				csLogString.Format("Get %dth hot pic length error!P2PDataLen[%d]!=4*JpegPicWidth[%d]*JpegPicHeight[%d]", i + 1,
-					struJpegWithAppendData.dwP2PDataLen, struJpegWithAppendData.dwJpegPicWidth, struJpegWithAppendData.dwJpegPicHeight);
-				failedTime++;
-				continue;
-			}
-
-			minTemp = 10000.0;
-			maxTemp = -10000.0;
-			//ret = AnalysisHotPicData(struJpegWithAppendData.pP2PDataBuff, struJpegWithAppendData.dwJpegPicHeight, struJpegWithAppendData.dwJpegPicWidth,
-				//NULL, 0, &maxTemp, &minTemp);
-
-			pDlg->JpgData2Gui(struJpegWithAppendData.pJpegPicBuff, struJpegWithAppendData.dwJpegPicLen, 1);
-		}
-
-		delete[] ucJpegBuf;
-		delete[] ucAppendDataBuf;
-		delete[] ucvisJpegBuf;
-	}
-
-	// 清理控件上的画面
-	((CStatic*)pDlg->GetDlgItem(IDC_CAMERA1))->Invalidate(TRUE);
-	//按钮置为获取状态
-	pDlg->b_getHotPic = FALSE;
-	pDlg->SetDlgItemTextA(IDC_BUTTON_Get_Hot_Pic, _T(" 获取图像"));
-
-	return 1;
-}
-
-
 void CSLTMDlg::OnBnClickedButtonGetHotPic()
 {
 	UpdateData(TRUE);
 	if (b_getHotPic == FALSE)
-	//if (FALSE == clDevice.getHotPic)
 	{
 		//开始获取热图
-		//AfxBeginThread(ThreadGetHotPicData, this);
-		AfxBeginThread(ThreadGetHotPic1, this);
+
+		//AfxBeginThread(ThreadGetHotPic1, this);
 		//AfxBeginThread(ThreadGetHotPicDataMutil, this);
 		//AfxBeginThread(ThreadGetHotPicDataMutil2, this);
 		//AfxBeginThread(ThreadGetHotPicDataMutil3, this);
@@ -1241,10 +1047,8 @@ void CSLTMDlg::OnBnClickedButtonGetHotPic()
 		Sleep(300);
 
 		if (b_getHotPic == TRUE)
-		//if (clDevice.getHotPic == TRUE)
 		{
 			this->SetDlgItemTextA(IDC_BUTTON_Get_Hot_Pic, _T("停止画面"));
-			//GetDlgItem(IDC_BUTTON_CAP)->EnableWindow(TRUE);
 			GetDlgItem(IDC_BUTTON_LOGOUT)->EnableWindow(FALSE);
 		}
 
@@ -1256,8 +1060,13 @@ void CSLTMDlg::OnBnClickedButtonGetHotPic()
 
 		BOOL bPreviewBlock = false;       //请求码流过程是否阻塞，0：否，1：是
 
-		//预览取流 
-		//llRealHandle = NET_DVR_RealPlay_V30(lUserID, &ClientInfo, g_RealDataCallBack_V30, this, TRUE);
+
+		for (int i = 0; i < 3; i++)
+		{
+			ClientInfo.hPlayWnd = GetDlgItem(1000+i)->GetSafeHwnd();  //窗口为空，设备SDK不解码只取流
+			clDevice[i].llRealHandle = NET_DVR_RealPlay_V30(clDevice[i].UserID, &ClientInfo, NULL, this, bPreviewBlock);
+		}
+
 
 		//ClientInfo.hPlayWnd = GetDlgItem(IDC_CAMERA1)->GetSafeHwnd();  //窗口为空，设备SDK不解码只取流
 		//llRealHandle = NET_DVR_RealPlay_V30(clDevice.UserID, &ClientInfo, NULL, this, bPreviewBlock);
@@ -1281,6 +1090,11 @@ void CSLTMDlg::OnBnClickedButtonGetHotPic()
 		//GetDlgItem(IDC_BUTTON_CAP)->EnableWindow(FALSE);
 		GetDlgItem(IDC_BUTTON_LOGOUT)->EnableWindow(TRUE);
 
+		for (int i = 0; i < 3; i++)
+		{
+			NET_DVR_StopRealPlay(clDevice[i].llRealHandle);
+			clDevice[i].llRealHandle = -1;
+		}
 		//NET_DVR_StopRealPlay(llRealHandle);
 		//NET_DVR_StopRealPlay(llRealHandle2);
 		//NET_DVR_StopRealPlay(llRealHandle3);
@@ -1308,44 +1122,359 @@ void CSLTMDlg::OnBnClickedButtonQuit()
 
 void CSLTMDlg::OnClose()
 {
+#ifdef HKWS
+	NET_DVR_Cleanup();
+#endif
 	
 	CDialogEx::OnClose();
 }
 
 
-void CSLTMDlg::BmpData2Gui1(unsigned char* pBits, int width, int height)
+void SaveSingleTemp(float *pData, CString sFileSaveName, int cNum)
 {
-	//fps[1] ++;
-	if (this->GetSafeHwnd())
+	int len_float = sizeof(float);
+	FILE *conti_buffer;//写连续保存的文件的句柄
+	char *path_save;//连续保存数据的文件路径
+
+	sFileSaveName.Format("D:\\savetemp\\%d\\%s.tmp", cNum, sFileSaveName);
+	path_save = sFileSaveName.GetBuffer(0);
+	conti_buffer = fopen(path_save, "w+b");
+	if (conti_buffer == NULL)
 	{
-		g_iFPS[1] ++;
-		BITMAPINFO       dibInfo;
-		// 组装位图信息头  
-		dibInfo.bmiHeader.biSize = sizeof(BITMAPINFO);
-		dibInfo.bmiHeader.biWidth = width;
-		dibInfo.bmiHeader.biHeight = -height;
-		dibInfo.bmiHeader.biPlanes = 1;
-		dibInfo.bmiHeader.biBitCount = 24;
-		dibInfo.bmiHeader.biCompression = 0;
-		dibInfo.bmiHeader.biSizeImage = width * height * 3;
-		dibInfo.bmiHeader.biXPelsPerMeter = 0x0ec4;
-		dibInfo.bmiHeader.biYPelsPerMeter = 0x0ec4;
-		dibInfo.bmiHeader.biClrUsed = 0;
-		dibInfo.bmiHeader.biClrImportant = 0;
-
-		CClientDC dc(&m_staticImage2);
-
-		SetStretchBltMode(dc.GetSafeHdc(), STRETCH_HALFTONE);
-
-		RECT rect;
-		m_staticImage2.GetClientRect(&rect);
-
-		int nResult = StretchDIBits(dc.GetSafeHdc(), 0, 0, rect.right - rect.left, rect.bottom - rect.top, 0, 0, width, height, pBits, &dibInfo, DIB_RGB_COLORS, SRCCOPY);
+		OutputDebugString("文件创建失败！");
+		return;
+	}
+	fseek(conti_buffer, 0, SEEK_SET);   //将文件指针指向文件头/
+	fwrite(pData, len_float, PIC_WIDTH*PIC_HEIGHT, conti_buffer);
+	fclose(conti_buffer);
+}
 
 
+void GetTimeList()
+{
+	auto resp = requests::get("127.0.0.1/assets/timelist/");
+	if (resp == NULL) {
+		OutputDebugString("TimeList Error!");
+	}
+	else {
+		//printf("%d %s\r\n", resp->status_code, resp->status_message());
+		int statuscode = resp->status_code;
+
+		if (statuscode == 200)
+		{
+			string requestJson = resp->body.c_str();
+			hv::Json root;
+			root = hv::Json::parse(requestJson);
+
+			int tilength = root["timelist"].size();
+			g_BaohaoKey = 0;
+			for (int k = 0; k < tilength; k++)
+			{
+				g_BaohaoKey++;
+				string tempstr = root["timelist"][k]["baohao"];
+				int tempint = atoi(tempstr.c_str());
+				g_BaohaoList[k] = tempint;
+				tempstr = root["timelist"][k]["time"];
+				LONG templong = atol(tempstr.c_str());
+				g_BoahaoTimeList[k] = templong;
+			}
+		}
 	}
 }
 
+
+void MoveFileAndRename(int pos)
+{
+	/************************************************************************/
+	/* 转换缓存文件为有效文件                                               */
+	/************************************************************************/
+
+	int m_CanBaohaoKey = -1; //判断条件
+
+	//获取正在处理的数据名（即时间）
+	CTime t;
+	t = g_tGetFileTime[pos];
+
+	//读取包号时间列表
+	for (int k = 0; k < g_BaohaoKey; k++)
+	{
+		CTime tm = g_BoahaoTimeList[k];
+
+		CTimeSpan span = t - tm;
+
+		LONG spanP = span.GetTotalSeconds();
+
+		log(spanP);
+		if (abs(spanP) < 1200) //包号和正面图片时间在90s内
+		{
+			m_CanBaohaoKey = k;
+		}
+	}
+
+	CString m_tempPath;
+	CString m_oldFilePath;
+	CString m_oldFileName;
+	CString m_baohaoPath;
+	CString m_newFileName;
+
+	//判断需转移的文件名
+	m_oldFileName.Format("%ld.tmp", g_tGetFileTime[pos]);
+	m_oldFilePath.Format("D://savetemp//%d//%s", pos, m_oldFileName);
+
+
+	if (m_CanBaohaoKey != -1)
+	{
+		if (g_BaohaoList[m_CanBaohaoKey] < 10)
+		{
+			m_baohaoPath.Format(_T("0%d"), g_BaohaoList[m_CanBaohaoKey]);
+		}
+		else
+		{
+			m_baohaoPath.Format(_T("%d"), g_BaohaoList[m_CanBaohaoKey]);
+		}
+		CTime m_fileTime = g_BoahaoTimeList[m_CanBaohaoKey];
+
+		m_newFileName = m_fileTime.Format("%Y%m%d-%H%M%S");
+	}
+	else
+	{
+		m_baohaoPath = "00";
+		m_newFileName = t.Format("%Y%m%d-%H%M%S");
+	}
+
+
+	//确认新文件名
+	if (pos == 1)
+	{
+		m_newFileName = m_baohaoPath + "-" + m_newFileName + "-A.tmp";
+	}
+	else if (pos == 2)
+	{
+		m_newFileName = m_baohaoPath + "-" + m_newFileName + "-B.tmp";
+	}
+	else if (pos == 3)
+	{
+		m_newFileName = m_baohaoPath + "-" + m_newFileName + "-C.tmp";
+	}
+
+	m_tempPath = "D://savetemp//" + m_newFileName;
+
+	if (m_CanBaohaoKey != -1)
+	{
+		CopyFile(m_oldFilePath, m_tempPath, FALSE);
+		//g_NowFileFath = m_newFileName;
+		//m_nDeleteFileTimer = SetTimer(nIDEventDeleteFile, 20000, 0);
+	}
+
+}
+
+
+void CheackFileMove(int pos, __time64_t tName)
+{
+	g_tGetFileTime[pos] = tName;
+	//SetTimer(nIDEventCheakFile, 20000, 0);
+	MoveFileAndRename(pos);
+
+}
+
+
+// 解析温度数据帧
+void CSLTMDlg::HandleTempFrame(float* tempMatrix)
+{
+	Mat TempDataMat(PIC_HEIGHT, PIC_WIDTH, CV_32FC1, tempMatrix);
+	double	minVal, maxVal;
+	int		minIdx[2] = {}, maxIdx[2] = {};
+	cv::minMaxIdx(TempDataMat, &minVal, &maxVal, minIdx, maxIdx);
+	CPoint maxPoint(maxIdx[1], maxIdx[0]);
+
+
+	CPoint centroidPoint(-1, -1); //无高温区块，质心初始化为(-1, -1)
+
+	// 获取二值化灰度图开始
+	Mat imgGray = Mat(PIC_HEIGHT, PIC_WIDTH, CV_8UC1);
+
+	float	fTempYuzhi	= 90.0; //温度阈值
+	int		iThreshold	= 10000;//高温点阈值
+	int		iPointSum	= 0;	//高温点总计
+	int		iPointXSum = 0, iTargetPointSum = 0, iPointYSum = 0;
+
+	for (int i = 0; i < PIC_HEIGHT; i++)
+	{
+		for (int j = 0; j < PIC_WIDTH; j++)
+		{
+			if (TempDataMat.at<float>(i, j) > fTempYuzhi)
+			{
+				iPointSum++;
+				imgGray.at<uchar>(i, j) = 255;
+				iTargetPointSum++;
+				iPointXSum += j;
+				iPointYSum += i;
+			}
+			else
+			{
+				imgGray.at<uchar>(i, j) = 0;
+			}
+		}
+	}
+
+	// 获取开操作之后的灰度图开始
+	Mat imgAfterOpen = Mat(PIC_HEIGHT, PIC_WIDTH, CV_8UC1);
+
+	// 阈值判断
+	if (iPointSum > iThreshold)
+	{
+		//对图像进行开操作，排除干扰点
+		Mat kernel = getStructuringElement(MORPH_RECT, Size(5, 5));
+
+		morphologyEx(imgGray, imgAfterOpen, 2, kernel);
+
+		// 轮廓合集contours，hierarchy用于Tree状结构，在此无其他作用
+		vector<vector<Point>> contours;
+		vector<Vec4i> hierarchy;
+
+		/* CV_RETR_EXTERNAL 只检测最外围轮廓                                     */
+		/* CV_CHAIN_APPROX_SIMPLE 仅保存轮廓的拐点信息                           */
+		/* 特别注意 该函数在某些版本OPENCV 编译时会导致内存泄漏                    */
+		findContours(imgAfterOpen, contours, hierarchy, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_SIMPLE);
+
+		Mat imageContours = Mat::zeros(imgAfterOpen.size(), CV_8UC1);
+		Mat Contours = Mat::zeros(imgAfterOpen.size(), CV_8UC1);
+
+		//sort(contours.begin(), contours.end(), ContoursSortFun); //轮廓按面积由大至小排序
+
+		double dLengthWidthRatio = 0.0;
+		CPoint PMaxtemp(0, 0);
+		int contoursUseless = 0;
+		if (contours.size() >= 2)
+		{
+			if (contourArea(contours[1]) < 1000)
+			{
+				contoursUseless = 1;
+			}
+		}
+		if (contours.size() < 2 || contoursUseless) // 一整块联通的区域情况下
+		{
+			Rect rMaxRect = boundingRect(contours[0]);
+
+			// 长宽比
+			dLengthWidthRatio = (rMaxRect.height*1.0) / rMaxRect.width;
+
+			// 排除铁包上部0.2区域求温度值（可能有裸露的铁包口部分）	在
+			Point startPoint = rMaxRect.tl();
+			startPoint.y = startPoint.y + (int)(0.2 * rMaxRect.height);
+			Mat TempDataMatREP(TempDataMat, Rect(startPoint, rMaxRect.br()));
+
+			double REPminVal, REPmaxVal;
+			int   REPminIdx[2] = {}, REPmaxIdx[2] = {};	// 修正后的minnimum Index, maximum Index
+			cv::minMaxIdx(TempDataMatREP, &REPminVal, &REPmaxVal, REPminIdx, REPmaxIdx);
+
+			PMaxtemp.x = startPoint.x + REPmaxIdx[1];
+			PMaxtemp.y = startPoint.y + REPmaxIdx[0];
+
+			maxVal = REPmaxVal;
+		}
+		else // 存在多块大目标区域的情况下 主要以前两部分面积计算
+		{
+			Rect rRects1 = boundingRect(contours[0]);
+			Rect rRects2 = boundingRect(contours[1]);
+			if (((rRects2.height* 1.0) / rRects2.width) < 0.3) // 长宽比小于0.3 默认第二部分为天车臂
+			{
+				dLengthWidthRatio = (rRects1.height  * 1.0) / rRects1.width;
+
+				// 针对第一部分区域求值
+				Point startpoint = rRects1.tl();
+				Mat TempDataMatREP(TempDataMat, Rect(startpoint, rRects1.br()));
+
+				double REPminVal, REPmaxVal;
+				int   REPminIdx[2] = {}, REPmaxIdx[2] = {};	// 修正后的minnimum Index, maximum Index
+				cv::minMaxIdx(TempDataMatREP, &REPminVal, &REPmaxVal, REPminIdx, REPmaxIdx);
+
+				PMaxtemp.x = startpoint.x + REPmaxIdx[1];
+				PMaxtemp.y = startpoint.y + REPmaxIdx[0];
+
+				maxVal = REPmaxVal;
+			}
+			else
+			{
+				dLengthWidthRatio = ((rRects1.height + rRects2.height)*1.0) / (rRects1.width*1.0);
+
+				//针对第一部分区域求值
+				Point startpoint1 = rRects1.tl();
+				Mat TempDataMatREP1(TempDataMat, Rect(startpoint1, rRects1.br()));
+
+				double REPminVal1, REPmaxVal1;
+				int   REPminIdx1[2] = {}, REPmaxIdx1[2] = {};	// 修正后的minnimum Index, maximum Index
+				cv::minMaxIdx(TempDataMatREP1, &REPminVal1, &REPmaxVal1, REPminIdx1, REPmaxIdx1);
+
+				//针对第二部分区域求值
+				Point startpoint2 = rRects2.tl();
+				Mat TempDataMatREP2(TempDataMat, Rect(startpoint2, rRects2.br()));
+
+				double REPminVal2, REPmaxVal2;
+				int   REPminIdx2[2] = {}, REPmaxIdx2[2] = {};	// 修正后的minnimum Index, maximum Index
+				cv::minMaxIdx(TempDataMatREP2, &REPminVal2, &REPmaxVal2, REPminIdx2, REPmaxIdx2);
+
+				if (REPmaxVal1 > REPmaxVal2)
+				{
+					maxVal = REPmaxVal1;
+					PMaxtemp.x = startpoint1.x + REPmaxIdx1[1];
+					PMaxtemp.y = startpoint1.y + REPmaxIdx1[0];
+				}
+				else
+				{
+					maxVal = REPmaxVal2;
+					PMaxtemp.x = startpoint2.x + REPmaxIdx2[1];
+					PMaxtemp.y = startpoint2.y + REPmaxIdx2[0];
+				}
+			}
+		}
+		maxPoint = PMaxtemp; // 将高温点修正到铁包上
+
+		centroidPoint.x = (iPointXSum / iTargetPointSum);
+		centroidPoint.y = (iPointYSum / iTargetPointSum);
+
+		// -------------- 已获取质心信息
+
+		CString timeCStr;
+		CTime tm; tm = CTime::GetCurrentTime();
+		CTimeSpan span = tm - ctInitTime;
+		LONG tspan = span.GetTotalSeconds();
+
+		// 图像存储条件 质心在中间访问 时差1分钟防止重复
+		if (centroidPoint.x > 270 && centroidPoint.x < 275 && tspan > 60)
+		{
+			ctInitTime = tm;
+			timeCStr.Format("%ld", tm.GetTime());
+
+			// 数据存入缓存
+			SaveSingleTemp(tempMatrix, timeCStr, 1);
+			
+			//float* Temp1Zhizhen;
+			//Temp1Zhizhen = g_afTemp[1];
+			//float* Temp2Zhizhen;
+			//Temp2Zhizhen = g_afTemp[2];
+			//SaveSingleTemp(Temp1Zhizhen, timeCStr, 2);
+			//SaveSingleTemp(Temp2Zhizhen, timeCStr, 3);
+	
+
+			// 调试用 存储灰度图像
+			/*String timestr;
+			timestr = timeCStr.GetBuffer(0);
+			timestr = timestr + ".jpg";
+			timestr = "D:\\savetemp\\gray\\" + timestr;
+			imwrite(timestr, imgGray);*/
+
+			// 存储数据数组 如果单摄像头判断则同时存储数据
+			// 多摄像头分时判断的话就 设置计时器 过段时间再从缓存中取
+			CheackFileMove(1, tm.GetTime());
+		}
+	}
+	return;
+}
+
+
+// old BMP to GUI function
+/* 
 void CSLTMDlg::BmpData2Gui2(unsigned char* pBits, int width, int height)
 {
 	//fps[2] ++;
@@ -1353,7 +1482,7 @@ void CSLTMDlg::BmpData2Gui2(unsigned char* pBits, int width, int height)
 	{
 		g_iFPS[2] ++;
 		BITMAPINFO       dibInfo;
-		// 组装位图信息头  
+		// 组装位图信息头
 		dibInfo.bmiHeader.biSize = sizeof(BITMAPINFO);
 		dibInfo.bmiHeader.biWidth = width;
 		dibInfo.bmiHeader.biHeight = -height;
@@ -1374,40 +1503,88 @@ void CSLTMDlg::BmpData2Gui2(unsigned char* pBits, int width, int height)
 		m_staticImage3.GetClientRect(&rect);
 
 		int nResult = StretchDIBits(dc.GetSafeHdc(), 0, 0, rect.right - rect.left, rect.bottom - rect.top, 0, 0, width, height, pBits, &dibInfo, DIB_RGB_COLORS, SRCCOPY);
+	}
+}
+*/
 
 
+void CSLTMDlg::BmpData2Gui(unsigned char* pBits, int width, int height, int position)
+{
+	if (mapStaticPosition[position]->GetSafeHwnd())
+	{
+		g_iFPS[position] ++;
+		CClientDC dc(mapStaticPosition[position]);
+		RECT rect;
+		SetStretchBltMode(dc.GetSafeHdc(), STRETCH_HALFTONE);
+		mapStaticPosition[position]->GetClientRect(&rect);
+
+		Mat matBmp(height, width, CV_8UC3, pBits);
+
+		if (iCentroid[position].iCentroidExist)
+		{
+			cv::circle(matBmp, iCentroid[position].pCentroid, 8, Scalar(0, 255, 0), 2);
+		}
+
+		CImage ciBmp;
+		MatToCImage(matBmp, ciBmp);
+		ciBmp.Draw(dc.GetSafeHdc(), rect);
 	}
 }
 
+
+
+// 已经整合为一个函数 启用下方三函数
 void CSLTMDlg::BmpData2Gui0(unsigned char* pBits, int width, int height)
 {
 	if (this->GetSafeHwnd())
 	{
 		g_iFPS[0] ++;
-		BITMAPINFO       dibInfo;
-		// 组装位图信息头  
-		dibInfo.bmiHeader.biSize = sizeof(BITMAPINFO);
-		dibInfo.bmiHeader.biWidth = width;
-		dibInfo.bmiHeader.biHeight = -height;
-		dibInfo.bmiHeader.biPlanes = 1;
-		dibInfo.bmiHeader.biBitCount = 24;
-		dibInfo.bmiHeader.biCompression = 0;
-		dibInfo.bmiHeader.biSizeImage = width * height * 3;
-		dibInfo.bmiHeader.biXPelsPerMeter = 0x0ec4;
-		dibInfo.bmiHeader.biYPelsPerMeter = 0x0ec4;
-		dibInfo.bmiHeader.biClrUsed = 0;
-		dibInfo.bmiHeader.biClrImportant = 0;
 
 		CClientDC dc(&m_staticImage1);
+		RECT rect;
+		SetStretchBltMode(dc.GetSafeHdc(), STRETCH_HALFTONE);
+		m_staticImage1.GetClientRect(&rect);
+
+		Mat matBmp(height, width, CV_8UC3, pBits);
+		CImage ciBmp;
+		MatToCImage(matBmp, ciBmp);
+		ciBmp.Draw(dc.GetSafeHdc(), rect);
+	}
+}
+void CSLTMDlg::BmpData2Gui1(unsigned char* pBits, int width, int height)
+{
+	if (this->GetSafeHwnd())
+	{
+		g_iFPS[1] ++;
+
+		CClientDC dc(&m_staticImage2);
 
 		SetStretchBltMode(dc.GetSafeHdc(), STRETCH_HALFTONE);
 
 		RECT rect;
-		m_staticImage1.GetClientRect(&rect);
+		m_staticImage2.GetClientRect(&rect);
 
-		int nResult = StretchDIBits(dc.GetSafeHdc(), 0, 0, rect.right - rect.left, rect.bottom - rect.top, 0, 0, width, height, pBits, &dibInfo, DIB_RGB_COLORS, SRCCOPY);
+		Mat matBmp(height, width, CV_8UC3, pBits);
+		CImage ciBmp;
+		MatToCImage(matBmp, ciBmp);
+		ciBmp.Draw(dc.GetSafeHdc(), rect);
+	}
+}
+void CSLTMDlg::BmpData2Gui2(unsigned char* pBits, int width, int height)
+{
+	if (this->GetSafeHwnd())
+	{
+		g_iFPS[2] ++;
 
+		CClientDC dc(&m_staticImage3);
+		RECT rect;
+		SetStretchBltMode(dc.GetSafeHdc(), STRETCH_HALFTONE);
+		m_staticImage3.GetClientRect(&rect);
 
+		Mat matBmp(height, width, CV_8UC3, pBits);
+		CImage ciBmp;
+		MatToCImage(matBmp, ciBmp);
+		ciBmp.Draw(dc.GetSafeHdc(), rect);
 	}
 }
 
@@ -1431,6 +1608,7 @@ void CSLTMDlg::DataTransfer(unsigned char* pBGR, int bgrLen, float* tempMatrix, 
 {
 	if (width == PIC_WIDTH && height == PIC_HEIGHT)
 	{
+
 		if (dev == 0)
 		{
 			memcpy(g_fTempData0, tempMatrix, width * height * sizeof(float));
@@ -1442,6 +1620,17 @@ void CSLTMDlg::DataTransfer(unsigned char* pBGR, int bgrLen, float* tempMatrix, 
 		else if (dev == 2)
 		{
 			memcpy(g_fTempData2, tempMatrix, width * height * sizeof(float));
+		}
+
+		cv::Point pMax;
+		GetCentroid(tempMatrix, iCentroid[dev].pCentroid, pMax);
+		if (iCentroid[dev].pCentroid != cv::Point(-1, -1))
+		{
+			iCentroid[dev].iCentroidExist = 1;
+		}
+		else
+		{
+			iCentroid[dev].iCentroidExist = 0;
 		}
 	}
 }
@@ -1555,7 +1744,7 @@ bool CSLTMDlg::GetCentroid(float* tempMatrix, Point &pCentroid, Point &pMaxTempP
 	// 通过OpenCV自带函数求取最高温最低温位置与温度值
 	double minVal, maxVal;
 	int minIdx[2] = {}, maxIdx[2] = {};
-	minMaxIdx(tempDataMat, &minVal, &maxVal, minIdx, maxIdx);
+	cv::minMaxIdx(tempDataMat, &minVal, &maxVal, minIdx, maxIdx);
 	
 	Point point(maxIdx[1], maxIdx[0]);// 默认最高温位置
 
@@ -1584,18 +1773,17 @@ bool CSLTMDlg::GetCentroid(float* tempMatrix, Point &pCentroid, Point &pMaxTempP
 	// 阈值判断 小于点数阈值不再继续
 	if (pointsum > PointThreshold)
 	{
+		
 		Mat dst(PIC_HEIGHT, PIC_WIDTH, CV_8UC1);
 
 		//对图像进行开操作，排除干扰点
 		Mat kernel = getStructuringElement(MORPH_RECT, Size(5, 5));
 		morphologyEx(imgBinarization, dst, 2, kernel);
 
-		/* 新方法，使用OpenCV findContours查找轮廓，排除铁包顶部敞开部分            */
+		// 新方法，使用OpenCV findContours查找轮廓，排除铁包顶部敞开部分            
 		vector<vector<cv::Point>> contours;
 		vector<Vec4i> hierarchy;
-
-		/* CV_RETR_EXTERNAL只检测最外围轮廓                                     */
-		/* CV_CHAIN_APPROX_SIMPLE仅保存轮廓的拐点信息                           */
+                         
 
 		findContours(dst, contours, hierarchy, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_SIMPLE);
 
@@ -1608,28 +1796,13 @@ bool CSLTMDlg::GetCentroid(float* tempMatrix, Point &pCentroid, Point &pMaxTempP
 		Point pMaxPointPosition(0, 0); // 最高温位置
 
 		Rect rects1 = boundingRect(contours[0]);
+		
+		if (rects1.area() < 8000)
+		{
+			pCentroid = Point(-1, -1);
+			return false;
+		}
 
-		// 长宽比
-		lengthWidthRatio = (rects1.height*1.0) / rects1.width;
-
-		// 排除铁包上部0.3区域求温度值（可能有裸露的铁包包口部分）	
-		Point startpoint = rects1.tl();
-
-		startpoint.x = startpoint.x + (int)(0.3 * rects1.width);
-		startpoint.y = startpoint.y + (int)(0.3 * rects1.height);
-
-		Mat TempDataMatREP(tempDataMat, Rect(startpoint, rects1.br()));
-
-		double REPminVal, REPmaxVal;
-		int   REPminIdx[2] = {}, REPmaxIdx[2] = {};	// 修正后的minnimum Index, maximum Index
-		minMaxIdx(TempDataMatREP, &REPminVal, &REPmaxVal, REPminIdx, REPmaxIdx);
-
-		pMaxPointPosition.x = startpoint.x + REPmaxIdx[1];
-		pMaxPointPosition.y = startpoint.y + REPmaxIdx[0];
-
-		maxVal = REPmaxVal;
-
-		point = pMaxPointPosition; //将高温点修正到铁包上
 		centroid.x = (Xsum / pointsum);
 		centroid.y = (Ysum / pointsum);
 
@@ -1646,47 +1819,50 @@ bool CSLTMDlg::GetCentroid(float* tempMatrix, Point &pCentroid, Point &pMaxTempP
 }
 
 
-//{
-//	double quyuArea = 0.0;
-//	quyuArea = contourArea(contours[0]);
-//
-//	CString timeCStr;
-//	CTime tm; tm = CTime::GetCurrentTime();
-//	CTimeSpan span = tm - tOld1;
-//	LONG tspan = span.GetTotalSeconds();
-//
-//	//图像存储条件
-//	if (centroid.y > 140 && centroid.y < 150 && tspan > 120 && quyuArea > 10000)
-//	{
-//		tOld1 = tm;
-//		timeCStr.Format("%ld", tm.GetTime());
-//		//SaveSingleTemp(tempMatrix, timeCStr, 1);
-//
-//		String timestr;
-//		timestr = timeCStr.GetBuffer(0);
-//		timestr = timestr + ".jpg";
-//		timestr = "D:\\savetemp\\1\\" + timestr;
-//		//imwrite(timestr, imgGray);
-//
-//		if (pDlg)
-//		{
-//			//pDlg->CheackFileMove(tm.GetTime());
-//		}
-//	}
-//}
-
 HBRUSH CSLTMDlg::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
 {
 	HBRUSH hbr = CDialogEx::OnCtlColor(pDC, pWnd, nCtlColor);
 
-	// TODO:  在此更改 DC 的任何特性
-	if (pWnd->GetDlgCtrlID() == IDC_STATIC_TITLE)
+	CFont m_font;
+	// 先判断是否是要特殊显示的标语字体
+	int iDlgCtlID = pWnd->GetDlgCtrlID();
+	switch (iDlgCtlID)
 	{
-		CFont m_font;
-		m_font.CreatePointFont(150, "MICROSOFT YAHEI");//代表15号字体，华文行楷
-		pDC->SetTextColor(RGB(0, 0, 250));
+	case IDC_STATIC_TITLE:
+		m_font.CreatePointFont(200, "MICROSOFT YAHEI");//代表15号字体，华文行楷
+		pDC->SetTextColor(RGB(250, 250, 250));
 		pDC->SelectObject(&m_font);
+		pDC->SetBkMode(TRANSPARENT);
+		return m_brushBack;
+	case IDC_STATIC_TEMPALERT:
+		m_font.CreatePointFont(200, "MICROSOFT YAHEI");
+		pDC->SetTextColor(RGB(255, 0, 0));
+		pDC->SetBkColor(RGB(255, 140, 0));
+		//pDC->SetBkMode(TRANSPARENT);
+		pDC->SelectObject(&m_font);
+		return m_brushBack;
+	case IDC_STATIC_THROUGH:
+		m_font.CreatePointFont(200, "MICROSOFT YAHEI");
+		pDC->SetTextColor(RGB(255, 0, 0));
+		pDC->SetBkColor(RGB(255, 140, 0));
+		//pDC->SetBkMode(TRANSPARENT);
+		pDC->SelectObject(&m_font);
+		return m_brushBack;
+	default:
+		break;
 	}
+
+
+	if (nCtlColor == CTLCOLOR_STATIC)
+	{
+		m_font.CreatePointFont(90, "MICROSOFT YAHEI");
+		pDC->SetTextColor(RGB(250, 250, 250));
+		pDC->SelectObject(&m_font);
+		pDC->SetBkMode(TRANSPARENT);
+		//return a not NULL brush handle
+		return m_brushBack;
+	}
+
 	// TODO:  如果默认的不是所需画笔，则返回另一个画笔
 	return hbr;
 }
@@ -1695,13 +1871,24 @@ HBRUSH CSLTMDlg::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
 void CSLTMDlg::OnTimer(UINT_PTR nIDEvent)
 {
 	// TODO: 在此添加消息处理程序代码和/或调用默认值
-	if (nIDEvent == 1)
+	if (nIDEvent == nIDEventUpdateFPS)
 	{
 		CString csFPS;
 		csFPS.Format("%d %d %d", g_iFPS[0], g_iFPS[1], g_iFPS[2]);
 
 		GetDlgItem(IDC_STATIC_STATUS)->SetWindowText(csFPS);
 		memset(g_iFPS, 0, sizeof(g_iFPS));
+	}
+	else if (nIDEvent == nIDEventUpdateAlert)
+	{
+		BOOL bMoveThrough = FALSE;
+
+		if (iCentroid[0].iCentroidExist || iCentroid[1].iCentroidExist || iCentroid[2].iCentroidExist)
+		{
+			bMoveThrough = TRUE;
+		}
+		GetDlgItem(IDC_STATIC_THROUGH)->ShowWindow(bMoveThrough);
+
 	}
 	CDialogEx::OnTimer(nIDEvent);
 }
@@ -1711,4 +1898,25 @@ void CSLTMDlg::OnBnClickedButtonTestdata()
 {
 	// TODO: 在此添加控件通知处理程序代码
 	AfxBeginThread(SendJsonMessage, this);
+	WriteTempDataFile(WRITE_FILE, "");
+}
+
+
+BOOL CSLTMDlg::PreTranslateMessage(MSG* pMsg)
+{
+	// TODO: 在此添加专用代码和/或调用基类
+	if (pMsg->message == WM_KEYDOWN && pMsg->wParam == VK_RETURN)
+	{
+		ShowWindow(SW_MINIMIZE);
+		return FALSE;
+	}
+	else if (pMsg->wParam == VK_ESCAPE)
+	{
+		if (MessageBox("确定要退出程序吗？ 如只希望最小化，请按回车键", "退出提示", MB_ICONINFORMATION | MB_YESNO) == IDNO)
+		{
+			this->OnClose();
+			return TRUE;
+		}
+	}
+	return CDialogEx::PreTranslateMessage(pMsg);
 }

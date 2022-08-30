@@ -5,22 +5,23 @@
 #pragma once
 #include "afxwin.h"
 #include <stdio.h>
+#include <time.h>
 #include <iostream>
 #include <string>
+#include <array>
+#include <map>
 #include "opencv2/core/core.hpp"
 #include "opencv2/highgui/highgui.hpp"
 #include "opencv2/imgproc/imgproc.hpp"
 
-#include <time.h>
-
-
 #include "ChannelControl.h"
+#include "CCentroid.h"
 using namespace std;
 using namespace cv;
 
 #define PIC_WIDTH 384
 #define PIC_HEIGHT 288
-
+#define PIC_SIZE PIC_WIDTH*PIC_HEIGHT
 #ifdef HKWS
 #include "HCNetSDK.h"
 #include "xmlmanage.h"
@@ -36,6 +37,7 @@ public:
 	CameraLink();
 
 	LONG UserID = -1;
+	int llRealHandle = -1;
 	NET_DVR_USER_LOGIN_INFO struLoginInfo = { 0 };
 	NET_DVR_DEVICEINFO_V40 struDeviceInfoV40 = { 0 };
 	int DevicePort = 8000;
@@ -50,6 +52,9 @@ protected:
 	char* IP;
 };
 #endif
+
+
+
 // CSLTMDlg 对话框
 class CSLTMDlg : public CDialogEx
 {
@@ -77,23 +82,12 @@ protected:
 	DECLARE_MESSAGE_MAP()
 	
 public:
-	afx_msg void OnBnClickedButtonQuit();
-	afx_msg void OnClose();
 
-	void DataTransfer(unsigned char* pBGR, int bgrLen, float* tempMatrix, int width, int height, int dev);
-	void StartHTTPServer();
 
-	void SetInfraredData(char *str);
-	bool GetCentroid(float* tempMatrix, Point &pCentroid, Point &pMaxTempPoint);
-	void BmpData2Gui0(unsigned char* pBits, int width, int height);
-	void BmpData2Gui1(unsigned char* pBits, int width, int height);
-	void BmpData2Gui2(unsigned char* pBits, int width, int height);
-	afx_msg void OnBnClickedButtonLogin();
-
-	BOOL ReadPara();
-	CString g_csDeviceIP[3];
+	CCentroid iCentroid[3];
+	CString g_csDeviceIP[DEV_NUM];
 	
-	bool b_getHotPic;
+
 	int m_DevicePort;
 	LONG lChannel;
 	LONG lRealTimeInfoHandle;
@@ -101,7 +95,7 @@ public:
 	CString m_Password;
 	CString m_StaticLog;
 	CString m_StaticTemp;
-	int GetP2PParam();
+
 
 	int m_maxFrameRate;
 	BOOL m_reflectiveEnable;
@@ -113,27 +107,52 @@ public:
 	BOOL m_jpegPicEnabled;
 	BOOL m_visJpegPicEnabled;
 
-	afx_msg void OnBnClickedButtonLogout();
+	BOOL ReadPara();
+	int GetP2PParam();
 	void JpgData2Gui(char* pJpg, int nJpgLen, int Key);
-	afx_msg void OnBnClickedButtonGetHotPic();
+
 	CStatic m_staticImage1;
 	CStatic m_staticImage2;
 	CStatic m_staticImage3;
-	int llRealHandle;
-	int llRealHandle2;
-	int llRealHandle3;
+	
 #ifdef HKWS
-	CameraLink clDevice;
-	CameraLink clDevice2;
-	CameraLink clDevice3;
+	bool b_getHotPic;
+	CameraLink clDevice[3];
 #endif
 
-	ChannelControl _ChannelControl0;
-	ChannelControl _ChannelControl1;
-	ChannelControl _ChannelControl2;
+	array<ChannelControl, 3>CameraCtrl;
 
 	afx_msg HBRUSH OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor);
 	afx_msg void OnTimer(UINT_PTR nIDEvent);
+
 	afx_msg void OnBnClickedButtonTestdata();
+	afx_msg void OnBnClickedButtonGetHotPic();
+	afx_msg void OnBnClickedButtonLogout();
+	afx_msg void OnBnClickedButtonLogin();
+	afx_msg void OnBnClickedButtonQuit();
+	afx_msg void OnClose();
+	void HandleTempFrame(float* tempMatrix);
+
+	void DataTransfer(unsigned char* pBGR, int bgrLen, float* tempMatrix, int width, int height, int dev);
+	void StartHTTPServer();
+
+	void SetInfraredData(char *str);
+	bool GetCentroid(float* tempMatrix, Point &pCentroid, Point &pMaxTempPoint);
+
+	void BmpData2Gui0(unsigned char* pBits, int width, int height);
+	void BmpData2Gui1(unsigned char* pBits, int width, int height);
+	void BmpData2Gui2(unsigned char* pBits, int width, int height);
+	map<int, CStatic* >mapStaticPosition{ {0, &m_staticImage1}, {1, &m_staticImage2}, {2, &m_staticImage3} };
+	void BmpData2Gui(unsigned char* pBits, int width, int height, int position);
+
+	CBrush m_brushBack;
+
+
+	// onTimer
+	UINT_PTR nIDEventUpdateFPS = 1;
+	UINT_PTR nIDEventUpdateAlert = 2;
+
+
+	virtual BOOL PreTranslateMessage(MSG* pMsg);
 };
 

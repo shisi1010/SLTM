@@ -378,7 +378,8 @@ void __stdcall CallbackGetEvent(HChannel hChannel,EventResult* pEventResult,GUI_
 		 
 		 if (pDlg)
 		 {
-			 pDlg->BmpData2Gui0((unsigned char*)pRGB,width,height);
+			 pDlg->BmpData2Gui((unsigned char*)pRGB, width, height, 0);
+			 //pDlg->BmpData2Gui0((unsigned char*)pRGB,width,height);
 		 }
 	 }
  }
@@ -392,7 +393,8 @@ void __stdcall CallbackGetEvent(HChannel hChannel,EventResult* pEventResult,GUI_
 		 CPoint ptMaxTemp(0,0);
 		 if (pDlg)
 		 {
-			 pDlg->BmpData2Gui1((unsigned char*)pRGB,width,height);
+			 pDlg->BmpData2Gui((unsigned char*)pRGB, width, height, 1);
+			 //pDlg->BmpData2Gui1((unsigned char*)pRGB,width,height);
 		 }
 	 }
  }
@@ -406,7 +408,8 @@ void __stdcall CallbackGetEvent(HChannel hChannel,EventResult* pEventResult,GUI_
 		 CPoint ptMaxTemp(0,0);
 		 if (pDlg)
 		 {
-			 pDlg->BmpData2Gui2((unsigned char*)pRGB,width,height);
+			 pDlg->BmpData2Gui((unsigned char*)pRGB, width, height, 2);
+			 //pDlg->BmpData2Gui2((unsigned char*)pRGB,width,height);
 		 }
 	 }
  }

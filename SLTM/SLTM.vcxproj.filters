@@ -45,6 +45,15 @@
     <ClInclude Include="ChannelControl.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="Frame.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="CameraControl.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="CCentroid.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="SLTM.cpp">
@@ -72,6 +81,15 @@
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="ChannelControl.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Frame.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="CameraControl.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="CCentroid.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>
