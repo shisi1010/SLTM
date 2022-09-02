@@ -34,7 +34,7 @@
 // 全局温度数据与图片数据
 float g_fTempData[3][PIC_HEIGHT*PIC_WIDTH];
 Mat g_mPicData[3];
-CTime ctInitTime(2010, 10, 10, 10, 10, 10);
+CTime ctInitTime[3];
 
 // 文件保存用
 CString g_Baohao;
@@ -121,9 +121,12 @@ BOOL CSLTMDlg::OnInitDialog()
 	StartHTTPServer();
 	SetTimer(nIDEventUpdateFPS, 1000, NULL);
 
-	g_mPicData[0] = Mat(PIC_HEIGHT, PIC_WIDTH, CV_8UC3, Scalar(0, 0, 0));
-	g_mPicData[1] = Mat(PIC_HEIGHT, PIC_WIDTH, CV_8UC3, Scalar(0, 0, 0));
-	g_mPicData[2] = Mat(PIC_HEIGHT, PIC_WIDTH, CV_8UC3, Scalar(0, 0, 0));
+
+	for (int i = 0; i < 3; i++)
+	{
+		g_mPicData[i] = Mat(PIC_HEIGHT, PIC_WIDTH, CV_8UC3, Scalar(0, 0, 0));
+		ctInitTime[i] = CTime(2021, 10, 10, 10, 10, 10);
+	}
 
 #if HKWS
 	NET_DVR_Init();
@@ -1471,13 +1474,13 @@ void CSLTMDlg::HandleTempFrame(float* tempMatrix)
 
 		CString timeCStr;
 		CTime tm; tm = CTime::GetCurrentTime();
-		CTimeSpan span = tm - ctInitTime;
+		CTimeSpan span = tm - ctInitTime[0];
 		LONG tspan = span.GetTotalSeconds();
 
 		// 图像存储条件 质心在中间访问 时差1分钟防止重复
 		if (centroidPoint.x > 270 && centroidPoint.x < 275 && tspan > 60)
 		{
-			ctInitTime = tm;
+			ctInitTime[0] = tm;
 			timeCStr.Format("%ld", tm.GetTime());
 
 			// 数据存入缓存
@@ -1832,11 +1835,14 @@ bool CSLTMDlg::GetCentroid(float* tempMatrix, Point &pCentroid, Point &pMaxTempP
 
 
 		CTime tm; tm = CTime::GetCurrentTime();
-		CTimeSpan span = tm - ctInitTime;
+		CTimeSpan span = tm - ctInitTime[dev];
 		LONG tspan = span.GetTotalSeconds();
-		if (tspan > 60  && pCentroid.x > 185 && pCentroid.x < 195)
+
+		if (tspan > 60 && pCentroid.x > 185 && pCentroid.x < 195 && pCentroid.y > 135 && pCentroid.y < 155)
 		{
-			OnBnClickedButtonTestdata(); ctInitTime = tm;
+			OnBnClickedButtonTestdata();
+
+			ctInitTime[dev] = tm;
 		}
 		return true;
 	}
