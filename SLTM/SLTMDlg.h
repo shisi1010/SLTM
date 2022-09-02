@@ -137,8 +137,9 @@ public:
 	void StartHTTPServer();
 
 	void SetInfraredData(char *str);
-	bool GetCentroid(float* tempMatrix, Point &pCentroid, Point &pMaxTempPoint);
+	//bool GetCentroid(float* tempMatrix, Point &pCentroid, Point &pMaxTempPoint);
 
+	bool GetCentroid(float* tempMatrix, Point &pCentroid, Point &pMaxTempPoint, int dev);
 	void BmpData2Gui0(unsigned char* pBits, int width, int height);
 	void BmpData2Gui1(unsigned char* pBits, int width, int height);
 	void BmpData2Gui2(unsigned char* pBits, int width, int height);

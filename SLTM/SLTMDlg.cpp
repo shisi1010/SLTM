@@ -22,14 +22,18 @@
 
 #define SETTING_FILE  _T("C:\\SLTM\\SLTMsetting.ini")
 
-//#define WRITE_FILE _T("D:\\SLTM\\123.tmp")
-#define WRITE_FILE _T("\\\\192.168.1.200\\1\\123.tmp")
+//#define LOCAL_TEST 1
 
+#ifdef LOCAL_TEST
+#define WRITE_FILE_PATH _T("\\\\127.0.0.1\\Share\\savetemp\\")
+#else
+#define WRITE_FILE_PATH _T("\\\\192.168.1.200\\Share\\savetemp\\")
+#endif
 // CSLTMDlg 对话框
-float g_fTempData0[PIC_HEIGHT*PIC_WIDTH];
-float g_fTempData1[PIC_HEIGHT*PIC_WIDTH];
-float g_fTempData2[PIC_HEIGHT*PIC_WIDTH];
 
+// 全局温度数据与图片数据
+float g_fTempData[3][PIC_HEIGHT*PIC_WIDTH];
+Mat g_mPicData[3];
 CTime ctInitTime(2010, 10, 10, 10, 10, 10);
 
 // 文件保存用
@@ -43,7 +47,7 @@ std::map<CString, CString>g_mapPositionName = {
 	{"5", "2号LF精炼位"}, {"6","3号炉钢包"}, {"7","4号炉钢包"}, {"8","2号RH精炼位"},
 	{"9", "1步铁包"}, {"10","2步铁包"}
 };
-
+CString g_devPosition;
 
 int g_iFPS[3] = { 0, 0, 0 };
 __time64_t g_tGetFileTime[3] = { 0, 0, 0 };
@@ -117,6 +121,10 @@ BOOL CSLTMDlg::OnInitDialog()
 	StartHTTPServer();
 	SetTimer(nIDEventUpdateFPS, 1000, NULL);
 
+	g_mPicData[0] = Mat(PIC_HEIGHT, PIC_WIDTH, CV_8UC3, Scalar(0, 0, 0));
+	g_mPicData[1] = Mat(PIC_HEIGHT, PIC_WIDTH, CV_8UC3, Scalar(0, 0, 0));
+	g_mPicData[2] = Mat(PIC_HEIGHT, PIC_WIDTH, CV_8UC3, Scalar(0, 0, 0));
+
 #if HKWS
 	NET_DVR_Init();
 	clDevice[0].setIP("192.168.1.31");
@@ -127,7 +135,12 @@ BOOL CSLTMDlg::OnInitDialog()
 	SetTimer(nIDEventUpdateAlert, 1000, NULL);
 	GetDlgItem(IDC_STATIC_THROUGH)->ShowWindow(FALSE);
 	GetDlgItem(IDC_STATIC_TEMPALERT)->ShowWindow(FALSE);
+#ifdef LOCAL_TEST
+#else
 	OnBnClickedButtonLogin();
+#endif
+
+
 	return TRUE;  // 除非将焦点设置到控件，否则返回 TRUE
 }
 
@@ -175,6 +188,16 @@ HCURSOR CSLTMDlg::OnQueryDragIcon()
 }
 
 
+CString CurrentTimeString() {
+	CString timeCStr;
+	CTime tm; tm = CTime::GetCurrentTime();
+
+	timeCStr.Format("%ld", tm.GetTime());
+	
+	return timeCStr;
+}
+
+
 /*************************************************
 函数名:    	ReadPara & WritePara
 函数描述:	读写相机设备参数，目前只有3个IP
@@ -216,18 +239,18 @@ BOOL CSLTMDlg::ReadPara()
 		WritePara();
 
 	CString devIP[3];
-	CString devTitle;
+
 	BOOL bwrite[4];
 	// Section 名,Key 名,默认值,存储字符串,字符串所允许的最大长度(15),文件路径
 	bwrite[0] = GetPrivateProfileString(_T("Device"), _T("IP0"), _T("NULL"), devIP[0].GetBufferSetLength(16), 16, SETTING_FILE);
 	bwrite[1] = GetPrivateProfileString(_T("Device"), _T("IP1"), _T("NULL"), devIP[1].GetBufferSetLength(16), 16, SETTING_FILE);
 	bwrite[2] = GetPrivateProfileString(_T("Device"), _T("IP2"), _T("NULL"), devIP[2].GetBufferSetLength(16), 16, SETTING_FILE);
-	bwrite[3] = GetPrivateProfileString(_T("Title"), _T("Position"), _T("NULL"), devTitle.GetBufferSetLength(16), 16, SETTING_FILE);
+	bwrite[3] = GetPrivateProfileString(_T("Title"), _T("Position"), _T("NULL"), g_devPosition.GetBufferSetLength(16), 16, SETTING_FILE);
 	// 此操作对应于GetBufferSetLength(),紧跟其后，不能忽略。此操作的作用是将GetBufferSetLength()申请的多余的内存空间释放掉，以便于可以进行后续的如字符串+操作
 	devIP[0].ReleaseBuffer();
 	devIP[1].ReleaseBuffer();
 	devIP[2].ReleaseBuffer();
-	devTitle.ReleaseBuffer();
+	g_devPosition.ReleaseBuffer();
 	if (!(bwrite[0] && bwrite[1] && bwrite[2] && bwrite[3]))
 	{
 		return FALSE;
@@ -235,21 +258,32 @@ BOOL CSLTMDlg::ReadPara()
 	for (int i = 0; i < DEV_NUM; i++)
 	{
 		g_csDeviceIP[i] = devIP[i];
-		g_devTitleName = g_mapPositionName[devTitle];
+		g_devTitleName = g_mapPositionName[g_devPosition];
 	}
 	return TRUE;
 }
 
-void WriteTempDataFile(CString FilePath, CString FileName)
+void WriteTempDataFile(int n)
 {
+	CString pos; pos.Format("-%d", n);
 	std::ofstream ofile;
-	ofile.open(FilePath, ios::out | ios::app);
+	CString TempFileName = WRITE_FILE_PATH + g_devPosition + "\\" + CurrentTimeString() + pos + ".tmp";
+	CString PicFileName = WRITE_FILE_PATH + g_devPosition + "\\" + CurrentTimeString() + pos + ".jpg";
+
+
+	string s_path((LPSTR)(LPCTSTR)PicFileName);
+
+	//OutputDebugString(s_path.c_str());
+
+	imwrite(s_path, g_mPicData[n]);
+	ofile.open(TempFileName, ios::out | ios::app);
+
 	if (!ofile.is_open())
 		return;
 	else
 	{
-		ofile.write(reinterpret_cast<const char*>(g_fTempData0), std::streamsize(PIC_SIZE * sizeof(float)));
-		ofile << g_fTempData0;
+		ofile.write(reinterpret_cast<const char*>(g_fTempData[n]), std::streamsize(PIC_SIZE * sizeof(float)));
+		ofile << g_fTempData[n];
 	}
 
 	ofile.close();
@@ -1519,7 +1553,7 @@ void CSLTMDlg::BmpData2Gui(unsigned char* pBits, int width, int height, int posi
 		mapStaticPosition[position]->GetClientRect(&rect);
 
 		Mat matBmp(height, width, CV_8UC3, pBits);
-
+		g_mPicData[position] = matBmp;
 		if (iCentroid[position].iCentroidExist)
 		{
 			cv::circle(matBmp, iCentroid[position].pCentroid, 8, Scalar(0, 255, 0), 2);
@@ -1608,22 +1642,9 @@ void CSLTMDlg::DataTransfer(unsigned char* pBGR, int bgrLen, float* tempMatrix, 
 {
 	if (width == PIC_WIDTH && height == PIC_HEIGHT)
 	{
-
-		if (dev == 0)
-		{
-			memcpy(g_fTempData0, tempMatrix, width * height * sizeof(float));
-		}
-		else if(dev == 1)
-		{
-			memcpy(g_fTempData1, tempMatrix, width * height * sizeof(float));
-		}
-		else if (dev == 2)
-		{
-			memcpy(g_fTempData2, tempMatrix, width * height * sizeof(float));
-		}
-
+		memcpy(g_fTempData[dev], tempMatrix, width * height * sizeof(float));
 		cv::Point pMax;
-		GetCentroid(tempMatrix, iCentroid[dev].pCentroid, pMax);
+		GetCentroid(tempMatrix, iCentroid[dev].pCentroid, pMax, dev);
 		if (iCentroid[dev].pCentroid != cv::Point(-1, -1))
 		{
 			iCentroid[dev].iCentroidExist = 1;
@@ -1736,7 +1757,7 @@ static inline bool ContoursSortFun(vector<cv::Point> contour1, vector<cv::Point>
 /************************************************************************/
 /* 摄像头图像质心判断模块                                                 */
 /************************************************************************/
-bool CSLTMDlg::GetCentroid(float* tempMatrix, Point &pCentroid, Point &pMaxTempPoint)
+bool CSLTMDlg::GetCentroid(float* tempMatrix, Point &pCentroid, Point &pMaxTempPoint, int dev)
 {
 	Mat tempDataMat(PIC_HEIGHT, PIC_WIDTH, CV_32FC1, tempMatrix);
 	Point centroid(-1, -1);			  // 质心初始化为(-1, -1)
@@ -1808,6 +1829,15 @@ bool CSLTMDlg::GetCentroid(float* tempMatrix, Point &pCentroid, Point &pMaxTempP
 
 		pCentroid = centroid;
 		pMaxTempPoint = point;
+
+
+		CTime tm; tm = CTime::GetCurrentTime();
+		CTimeSpan span = tm - ctInitTime;
+		LONG tspan = span.GetTotalSeconds();
+		if (tspan > 60  && pCentroid.x > 185 && pCentroid.x < 195)
+		{
+			OnBnClickedButtonTestdata(); ctInitTime = tm;
+		}
 		return true;
 	}
 	else
@@ -1897,8 +1927,10 @@ void CSLTMDlg::OnTimer(UINT_PTR nIDEvent)
 void CSLTMDlg::OnBnClickedButtonTestdata()
 {
 	// TODO: 在此添加控件通知处理程序代码
-	AfxBeginThread(SendJsonMessage, this);
-	WriteTempDataFile(WRITE_FILE, "");
+	//AfxBeginThread(SendJsonMessage, this);
+	WriteTempDataFile(0);
+	WriteTempDataFile(1);
+	WriteTempDataFile(2);
 }
 
 
