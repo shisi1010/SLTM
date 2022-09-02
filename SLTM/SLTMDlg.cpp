@@ -1840,7 +1840,7 @@ bool CSLTMDlg::GetCentroid(float* tempMatrix, Point &pCentroid, Point &pMaxTempP
 
 		if (tspan > 60 && pCentroid.x > 185 && pCentroid.x < 195 && pCentroid.y > 135 && pCentroid.y < 155)
 		{
-			OnBnClickedButtonTestdata();
+			WriteTempDataFile(dev);
 
 			ctInitTime[dev] = tm;
 		}

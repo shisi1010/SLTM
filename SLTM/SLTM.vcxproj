@@ -23,7 +23,7 @@
     <ProjectGuid>{0D2BC7EA-9817-4B2C-A427-22E989BD24CB}</ProjectGuid>
     <Keyword>MFCProj</Keyword>
     <RootNamespace>SLTM</RootNamespace>
-    <WindowsTargetPlatformVersion>10.0.17763.0</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>10.0.17134.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
