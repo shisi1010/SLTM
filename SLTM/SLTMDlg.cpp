@@ -22,7 +22,7 @@
 
 #define SETTING_FILE  _T("C:\\SLTM\\SLTMsetting.ini")
 
-//#define LOCAL_TEST 1
+#define LOCAL_TEST 1
 
 #ifdef LOCAL_TEST
 #define WRITE_FILE_PATH _T("\\\\127.0.0.1\\Share\\savetemp\\")
@@ -1315,23 +1315,30 @@ void CheackFileMove(int pos, __time64_t tName)
 }
 
 
-// 解析温度数据帧
-void CSLTMDlg::HandleTempFrame(float* tempMatrix)
+static inline bool ContoursSortFun(vector<cv::Point> contour1, vector<cv::Point> contour2)
 {
-	Mat TempDataMat(PIC_HEIGHT, PIC_WIDTH, CV_32FC1, tempMatrix);
+	return (cv::contourArea(contour1) > cv::contourArea(contour2));
+}
+// 解析温度数据帧 自动截图逻辑
+// 输入温度数组 设备位置 
+// 输出最高温点 最高温坐标 质心坐标
+void CSLTMDlg::HandleTempFrame(float* tempMatrix, Point &pCentroid, Point &pMaxTempPoint, float &fMaxTemp, int dev)
+{
+	Mat tempDataMat(PIC_HEIGHT, PIC_WIDTH, CV_32FC1, tempMatrix);
 	double	minVal, maxVal;
 	int		minIdx[2] = {}, maxIdx[2] = {};
-	cv::minMaxIdx(TempDataMat, &minVal, &maxVal, minIdx, maxIdx);
-	CPoint maxPoint(maxIdx[1], maxIdx[0]);
+	cv::minMaxIdx(tempDataMat, &minVal, &maxVal, minIdx, maxIdx);
+	Point maxPoint(maxIdx[1], maxIdx[0]);
 
 
-	CPoint centroidPoint(-1, -1); //无高温区块，质心初始化为(-1, -1)
+	Point centroidPoint(-1, -1); //无高温区块，质心初始化为(-1, -1)
 
-	// 获取二值化灰度图开始
-	Mat imgGray = Mat(PIC_HEIGHT, PIC_WIDTH, CV_8UC1);
+	// 获取二值化图与统计高温点
+	Mat imgBinarization = Mat(PIC_HEIGHT, PIC_WIDTH, CV_8UC1);
 
-	float	fTempYuzhi	= 90.0; //温度阈值
+	float	fTempThreshold	= 90.0; //温度阈值
 	int		iThreshold	= 10000;//高温点阈值
+
 	int		iPointSum	= 0;	//高温点总计
 	int		iPointXSum = 0, iTargetPointSum = 0, iPointYSum = 0;
 
@@ -1339,31 +1346,30 @@ void CSLTMDlg::HandleTempFrame(float* tempMatrix)
 	{
 		for (int j = 0; j < PIC_WIDTH; j++)
 		{
-			if (TempDataMat.at<float>(i, j) > fTempYuzhi)
+			if (tempDataMat.at<float>(i, j) > fTempThreshold)
 			{
 				iPointSum++;
-				imgGray.at<uchar>(i, j) = 255;
+				imgBinarization.at<uchar>(i, j) = 255;
 				iTargetPointSum++;
 				iPointXSum += j;
 				iPointYSum += i;
 			}
 			else
 			{
-				imgGray.at<uchar>(i, j) = 0;
+				imgBinarization.at<uchar>(i, j) = 0;
 			}
 		}
 	}
 
-	// 获取开操作之后的灰度图开始
-	Mat imgAfterOpen = Mat(PIC_HEIGHT, PIC_WIDTH, CV_8UC1);
-
 	// 阈值判断
 	if (iPointSum > iThreshold)
 	{
+		// 获取开操作之后的灰度图开始
+		Mat imgAfterOpen = Mat(PIC_HEIGHT, PIC_WIDTH, CV_8UC1);
+
 		//对图像进行开操作，排除干扰点
 		Mat kernel = getStructuringElement(MORPH_RECT, Size(5, 5));
-
-		morphologyEx(imgGray, imgAfterOpen, 2, kernel);
+		morphologyEx(imgBinarization, imgAfterOpen, 2, kernel);
 
 		// 轮廓合集contours，hierarchy用于Tree状结构，在此无其他作用
 		vector<vector<Point>> contours;
@@ -1377,19 +1383,19 @@ void CSLTMDlg::HandleTempFrame(float* tempMatrix)
 		Mat imageContours = Mat::zeros(imgAfterOpen.size(), CV_8UC1);
 		Mat Contours = Mat::zeros(imgAfterOpen.size(), CV_8UC1);
 
-		//sort(contours.begin(), contours.end(), ContoursSortFun); //轮廓按面积由大至小排序
+		sort(contours.begin(), contours.end(), ContoursSortFun); //轮廓按面积由大至小排序
 
 		double dLengthWidthRatio = 0.0;
-		CPoint PMaxtemp(0, 0);
-		int contoursUseless = 0;
+		Point pMaxtempPoint(0, 0);
+		bool bContoursUseless = false;
 		if (contours.size() >= 2)
 		{
 			if (contourArea(contours[1]) < 1000)
 			{
-				contoursUseless = 1;
+				bContoursUseless = true;
 			}
 		}
-		if (contours.size() < 2 || contoursUseless) // 一整块联通的区域情况下
+		if (contours.size() < 2 || bContoursUseless) // 一整块联通的区域情况下
 		{
 			Rect rMaxRect = boundingRect(contours[0]);
 
@@ -1399,14 +1405,14 @@ void CSLTMDlg::HandleTempFrame(float* tempMatrix)
 			// 排除铁包上部0.2区域求温度值（可能有裸露的铁包口部分）	在
 			Point startPoint = rMaxRect.tl();
 			startPoint.y = startPoint.y + (int)(0.2 * rMaxRect.height);
-			Mat TempDataMatREP(TempDataMat, Rect(startPoint, rMaxRect.br()));
+			Mat TempDataMatREP(tempDataMat, Rect(startPoint, rMaxRect.br()));
 
 			double REPminVal, REPmaxVal;
 			int   REPminIdx[2] = {}, REPmaxIdx[2] = {};	// 修正后的minnimum Index, maximum Index
 			cv::minMaxIdx(TempDataMatREP, &REPminVal, &REPmaxVal, REPminIdx, REPmaxIdx);
 
-			PMaxtemp.x = startPoint.x + REPmaxIdx[1];
-			PMaxtemp.y = startPoint.y + REPmaxIdx[0];
+			pMaxtempPoint.x = startPoint.x + REPmaxIdx[1];
+			pMaxtempPoint.y = startPoint.y + REPmaxIdx[0];
 
 			maxVal = REPmaxVal;
 		}
@@ -1420,14 +1426,14 @@ void CSLTMDlg::HandleTempFrame(float* tempMatrix)
 
 				// 针对第一部分区域求值
 				Point startpoint = rRects1.tl();
-				Mat TempDataMatREP(TempDataMat, Rect(startpoint, rRects1.br()));
+				Mat TempDataMatREP(tempDataMat, Rect(startpoint, rRects1.br()));
 
 				double REPminVal, REPmaxVal;
 				int   REPminIdx[2] = {}, REPmaxIdx[2] = {};	// 修正后的minnimum Index, maximum Index
 				cv::minMaxIdx(TempDataMatREP, &REPminVal, &REPmaxVal, REPminIdx, REPmaxIdx);
 
-				PMaxtemp.x = startpoint.x + REPmaxIdx[1];
-				PMaxtemp.y = startpoint.y + REPmaxIdx[0];
+				pMaxtempPoint.x = startpoint.x + REPmaxIdx[1];
+				pMaxtempPoint.y = startpoint.y + REPmaxIdx[0];
 
 				maxVal = REPmaxVal;
 			}
@@ -1437,7 +1443,7 @@ void CSLTMDlg::HandleTempFrame(float* tempMatrix)
 
 				//针对第一部分区域求值
 				Point startpoint1 = rRects1.tl();
-				Mat TempDataMatREP1(TempDataMat, Rect(startpoint1, rRects1.br()));
+				Mat TempDataMatREP1(tempDataMat, Rect(startpoint1, rRects1.br()));
 
 				double REPminVal1, REPmaxVal1;
 				int   REPminIdx1[2] = {}, REPmaxIdx1[2] = {};	// 修正后的minnimum Index, maximum Index
@@ -1445,7 +1451,7 @@ void CSLTMDlg::HandleTempFrame(float* tempMatrix)
 
 				//针对第二部分区域求值
 				Point startpoint2 = rRects2.tl();
-				Mat TempDataMatREP2(TempDataMat, Rect(startpoint2, rRects2.br()));
+				Mat TempDataMatREP2(tempDataMat, Rect(startpoint2, rRects2.br()));
 
 				double REPminVal2, REPmaxVal2;
 				int   REPminIdx2[2] = {}, REPmaxIdx2[2] = {};	// 修正后的minnimum Index, maximum Index
@@ -1454,56 +1460,35 @@ void CSLTMDlg::HandleTempFrame(float* tempMatrix)
 				if (REPmaxVal1 > REPmaxVal2)
 				{
 					maxVal = REPmaxVal1;
-					PMaxtemp.x = startpoint1.x + REPmaxIdx1[1];
-					PMaxtemp.y = startpoint1.y + REPmaxIdx1[0];
+					pMaxtempPoint.x = startpoint1.x + REPmaxIdx1[1];
+					pMaxtempPoint.y = startpoint1.y + REPmaxIdx1[0];
 				}
 				else
 				{
 					maxVal = REPmaxVal2;
-					PMaxtemp.x = startpoint2.x + REPmaxIdx2[1];
-					PMaxtemp.y = startpoint2.y + REPmaxIdx2[0];
+					pMaxtempPoint.x = startpoint2.x + REPmaxIdx2[1];
+					pMaxtempPoint.y = startpoint2.y + REPmaxIdx2[0];
 				}
 			}
 		}
-		maxPoint = PMaxtemp; // 将高温点修正到铁包上
+		maxPoint = pMaxtempPoint; // 将高温点修正到铁包上
 
 		centroidPoint.x = (iPointXSum / iTargetPointSum);
 		centroidPoint.y = (iPointYSum / iTargetPointSum);
 
 		// -------------- 已获取质心信息
 
-		CString timeCStr;
+
 		CTime tm; tm = CTime::GetCurrentTime();
-		CTimeSpan span = tm - ctInitTime[0];
+		CTimeSpan span = tm - ctInitTime[dev];
 		LONG tspan = span.GetTotalSeconds();
 
 		// 图像存储条件 质心在中间访问 时差1分钟防止重复
-		if (centroidPoint.x > 270 && centroidPoint.x < 275 && tspan > 60)
+		if (tspan > 60 && pCentroid.x > 185 && pCentroid.x < 195 && pCentroid.y > 135 && pCentroid.y < 155)
 		{
-			ctInitTime[0] = tm;
-			timeCStr.Format("%ld", tm.GetTime());
+			WriteTempDataFile(dev);
 
-			// 数据存入缓存
-			SaveSingleTemp(tempMatrix, timeCStr, 1);
-			
-			//float* Temp1Zhizhen;
-			//Temp1Zhizhen = g_afTemp[1];
-			//float* Temp2Zhizhen;
-			//Temp2Zhizhen = g_afTemp[2];
-			//SaveSingleTemp(Temp1Zhizhen, timeCStr, 2);
-			//SaveSingleTemp(Temp2Zhizhen, timeCStr, 3);
-	
-
-			// 调试用 存储灰度图像
-			/*String timestr;
-			timestr = timeCStr.GetBuffer(0);
-			timestr = timestr + ".jpg";
-			timestr = "D:\\savetemp\\gray\\" + timestr;
-			imwrite(timestr, imgGray);*/
-
-			// 存储数据数组 如果单摄像头判断则同时存储数据
-			// 多摄像头分时判断的话就 设置计时器 过段时间再从缓存中取
-			CheackFileMove(1, tm.GetTime());
+			ctInitTime[dev] = tm;
 		}
 	}
 	return;
@@ -1751,12 +1736,8 @@ void CSLTMDlg::SetInfraredData(char *str)
 
 // Threshold-阈值 Centroid-质心
 #define TempThreshold 110.0 //温度阈值
-#define PointThreshold 10000 //高温点阈值
+#define PointThreshold 7000 //高温点阈值
 
-static inline bool ContoursSortFun(vector<cv::Point> contour1, vector<cv::Point> contour2)
-{
-	return (cv::contourArea(contour1) > cv::contourArea(contour2));
-}
 /************************************************************************/
 /* 摄像头图像质心判断模块                                                 */
 /************************************************************************/
@@ -1804,7 +1785,7 @@ bool CSLTMDlg::GetCentroid(float* tempMatrix, Point &pCentroid, Point &pMaxTempP
 		Mat kernel = getStructuringElement(MORPH_RECT, Size(5, 5));
 		morphologyEx(imgBinarization, dst, 2, kernel);
 
-		// 新方法，使用OpenCV findContours查找轮廓，排除铁包顶部敞开部分            
+		// 新方法，使用OpenCV findContours查找轮廓        
 		vector<vector<cv::Point>> contours;
 		vector<Vec4i> hierarchy;
                          
@@ -1821,7 +1802,7 @@ bool CSLTMDlg::GetCentroid(float* tempMatrix, Point &pCentroid, Point &pMaxTempP
 
 		Rect rects1 = boundingRect(contours[0]);
 		
-		if (rects1.area() < 8000)
+		if (rects1.area() < 0.8*PointThreshold)
 		{
 			pCentroid = Point(-1, -1);
 			return false;
@@ -1834,11 +1815,25 @@ bool CSLTMDlg::GetCentroid(float* tempMatrix, Point &pCentroid, Point &pMaxTempP
 		pMaxTempPoint = point;
 
 
+
+
+		// 中心区域是否被覆盖
+		Rect rTopRect = Rect(162, 67, 60, 20);
+		Rect rMiddleRect = Rect(162, 134, 60, 20);
+		Rect rBottomRect = Rect(162, 201, 60, 20);
+	
+		Scalar MiddleValue = mean(imgBinarization(rMiddleRect));
+		float fMiddleMeanValue = MiddleValue.val[0];
+		Scalar TopValue = mean(imgBinarization(rTopRect));
+		float fTopValue = TopValue.val[0];
+		Scalar BottomValue = mean(imgBinarization(rBottomRect));
+		float fBottomMeanValue = BottomValue.val[0];
+
 		CTime tm; tm = CTime::GetCurrentTime();
 		CTimeSpan span = tm - ctInitTime[dev];
 		LONG tspan = span.GetTotalSeconds();
 
-		if (tspan > 60 && pCentroid.x > 185 && pCentroid.x < 195 && pCentroid.y > 135 && pCentroid.y < 155)
+		if (tspan > 60 && pCentroid.x > 185 && pCentroid.x < 195 && pCentroid.y > 135 && pCentroid.y < 155 && fMiddleMeanValue > 230 && fTopValue > 230 && fBottomMeanValue >150)
 		{
 			WriteTempDataFile(dev);
 
