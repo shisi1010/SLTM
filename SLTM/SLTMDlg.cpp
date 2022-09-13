@@ -47,6 +47,54 @@ std::map<CString, CString>g_mapPositionName = {
 	{"5", "2号LF精炼位"}, {"6","3号炉钢包"}, {"7","4号炉钢包"}, {"8","2号RH精炼位"},
 	{"9", "1步铁包"}, {"10","2步铁包"}
 };
+struct Threshold
+{
+	int iThreshold[3];
+};
+
+struct JudgeBOOL
+{
+	bool iJudge[3][5];
+};
+
+Threshold devThreshold[10] = {
+	{5000,15000,3000},{10000,10000,10000},{10000,8000,3000},{12000,10000,10000},{10000,10000,3000},
+	{4000,8000,3000},{4000,8000,3000},{10000,10000,10000},{4000,8000,3000},{4000,8000,3000},
+};
+
+
+/*
+&& (fMiddleMeanValue > 200 || bJudgeCon[0])
+&& (fTopValue > 100 || bJudgeCon[1])
+&& (fBottomMeanValue > 100 || bJudgeCon[2])
+&& (fRightMeanValue < 20 || bJudgeCon[3])
+&& (fLeftMeanValue < 20 || bJudgeCon[4]))
+*/
+JudgeBOOL devJudgeBool[10] = {
+	{0,0,1,1,1,0,0,0,0,0,0,0,1,1,1}, // pos1 LF1
+	{0,0,0,1,1,0,0,0,1,1,0,0,0,1,1}, // pos2 钢包1
+	{0,0,0,0,1,0,0,1,1,1,0,0,1,1,1}, // pos3 钢包2
+	{0,0,0,0,0,0,0,0,1,1,0,0,1,1,1}, // pos4 RH1
+	{0,0,0,1,1,0,0,0,0,1,0,0,1,1,1}, // pos5 LF2
+	{0,0,0,1,1,0,0,0,1,1,0,0,1,1,1}, // pos6 钢包3
+	{0,0,0,1,1,0,0,0,1,1,0,0,1,1,1}, // pos7 钢包4
+	{0,0,0,0,0,0,0,0,0,0,0,0,1,1,1}, // pos8 RH2
+	{0,0,1,1,1,0,0,0,1,0,0,0,1,1,1}, // pos9 铁包1
+	{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}  // pos10 铁包2
+};
+
+
+std::map<CString, Threshold>g_mapPointThreshold = {
+	{"1", devThreshold[0]},{"2", devThreshold[1]},{"3", devThreshold[2]},{"4", devThreshold[3]},{"5", devThreshold[4]},
+	{"6", devThreshold[5]},{"7", devThreshold[6]},{"8", devThreshold[7]},{"9", devThreshold[8]},{"10", devThreshold[9]}
+};
+
+std::map<CString, JudgeBOOL>g_mapSaveJudge = {
+	{"1", devJudgeBool[0]},{"2", devJudgeBool[1]},{"3", devJudgeBool[2]},{"4", devJudgeBool[3]},{"5", devJudgeBool[4]},
+	{"6", devJudgeBool[5]},{"7", devJudgeBool[6]},{"8", devJudgeBool[7]},{"9", devJudgeBool[8]},{"10", devJudgeBool[9]}
+};
+
+
 CString g_devPosition;
 
 int g_iFPS[3] = { 0, 0, 0 };
@@ -887,23 +935,22 @@ void CameraDev::SetUserID(LONG ID, int iPosition)
 	this->iDeviceKey = iPosition;
 }
 
-/*
 
 UINT ThreadGetHotPicDataMutil(LPVOID lpParam)
 {
 	CSLTMDlg* pDlg = (CSLTMDlg*)lpParam;
 	CameraDev a;
-	a.SetUserID(pDlg->clDevice.UserID, 1);
-	int i; CString stLogString;
+	a.SetUserID(pDlg->clDevice[0].UserID, 1);
+	CString stLogString;
 	if (a.lUserID < 0)
 	{
 		pDlg->SetDlgItemText(IDC_STATIC_LOG, "抓热图：有设备还未登陆！");
 	}
 	else
 	{
-		pDlg->clDevice.getHotPic = TRUE;
+		pDlg->clDevice[0].getHotPic = TRUE;
 
-		for (i = 0; (TRUE == pDlg->clDevice.getHotPic); i++)
+		for (; (TRUE == pDlg->clDevice[0].getHotPic);)
 		{
 			//获取热图的SDK接口
 			BOOL ERRGET;
@@ -914,16 +961,33 @@ UINT ThreadGetHotPicDataMutil(LPVOID lpParam)
 			
 			if (TRUE != ERRGET)
 			{
-				stLogString.Format("抓热图失败！错误信息：%s(%d)", NET_DVR_GetErrorMsg(), NET_DVR_GetLastError());
-				pDlg->SetDlgItemText(IDC_STATIC_LOG, stLogString);
-				a.failedTime++;
-				continue;
+				//获取热图的SDK接口
+				BOOL ERRGET;
+
+				CString ot;
+				clock_t start = clock();
+				ERRGET = NET_DVR_CaptureJPEGPicture_WithAppendData(a.lUserID, a.channel, &a.struJpegWithAppendData);
+				clock_t stop1 = clock();
+				if (TRUE != ERRGET)
+				{
+					stLogString.Format("抓热图失败！错误信息：%s(%d)", NET_DVR_GetErrorMsg(), NET_DVR_GetLastError());
+					pDlg->SetDlgItemText(IDC_STATIC_LOG, stLogString);
+					a.failedTime++;
+					continue;
+				}
+				else
+				{
+					if (a.struJpegWithAppendData.dwP2PDataLen == PIC_WIDTH * PIC_HEIGHT * sizeof(float))
+					{
+						memcpy(g_fTempData[0], a.struJpegWithAppendData.pP2PDataBuff, a.struJpegWithAppendData.dwP2PDataLen);
+						int dev = 0;
+						cv::Point pMax;
+						float fmaxTemp;
+						pDlg->HandleTempFrame(g_fTempData[dev], pDlg->iCentroid[dev].pCentroid, pMax, fmaxTemp, dev);
+					}
+					
+				}
 			}
-			pDlg->JpgData2Gui(a.struJpegWithAppendData.pJpegPicBuff, a.struJpegWithAppendData.dwJpegPicLen, a.iDeviceKey);
-			clock_t stop1 = clock();
-			long t1 = (stop1 - start);
-			ot.Format("1#: %d\n", t1);
-			OutputDebugString(ot);
 		}
 	}
 	return 0;
@@ -933,17 +997,17 @@ UINT ThreadGetHotPicDataMutil2(LPVOID lpParam)
 {
 	CSLTMDlg* pDlg = (CSLTMDlg*)lpParam;
 	CameraDev a;
-	a.SetUserID(pDlg->clDevice2.UserID, 2);
-	int i; CString stLogString;
+	a.SetUserID(pDlg->clDevice[1].UserID, 2);
+	CString stLogString;
 	if (a.lUserID < 0)
 	{
 		pDlg->SetDlgItemText(IDC_STATIC_LOG, "抓热图：有设备还未登陆！");
 	}
 	else
 	{
-		pDlg->clDevice2.getHotPic = TRUE;
+		pDlg->clDevice[1].getHotPic = TRUE;
 
-		for (i = 0; (TRUE == pDlg->clDevice2.getHotPic); i++)
+		for (; (TRUE == pDlg->clDevice[1].getHotPic);)
 		{
 			//获取热图的SDK接口
 			BOOL ERRGET;
@@ -954,16 +1018,33 @@ UINT ThreadGetHotPicDataMutil2(LPVOID lpParam)
 
 			if (TRUE != ERRGET)
 			{
-				stLogString.Format("抓热图失败！错误信息：%s(%d)", NET_DVR_GetErrorMsg(), NET_DVR_GetLastError());
-				pDlg->SetDlgItemText(IDC_STATIC_LOG, stLogString);
-				a.failedTime++;
-				continue;
+				//获取热图的SDK接口
+				BOOL ERRGET;
+
+				CString ot;
+				clock_t start = clock();
+				ERRGET = NET_DVR_CaptureJPEGPicture_WithAppendData(a.lUserID, a.channel, &a.struJpegWithAppendData);
+				clock_t stop1 = clock();
+				if (TRUE != ERRGET)
+				{
+					stLogString.Format("抓热图失败！错误信息：%s(%d)", NET_DVR_GetErrorMsg(), NET_DVR_GetLastError());
+					pDlg->SetDlgItemText(IDC_STATIC_LOG, stLogString);
+					a.failedTime++;
+					continue;
+				}
+				else
+				{
+					if (a.struJpegWithAppendData.dwP2PDataLen == PIC_WIDTH * PIC_HEIGHT * sizeof(float))
+					{
+						memcpy(g_fTempData[1], a.struJpegWithAppendData.pP2PDataBuff, a.struJpegWithAppendData.dwP2PDataLen);
+						int dev = 1;
+						cv::Point pMax;
+						float fmaxTemp;
+						pDlg->HandleTempFrame(g_fTempData[dev], pDlg->iCentroid[dev].pCentroid, pMax, fmaxTemp, dev);
+					}
+					
+				}
 			}
-			pDlg->JpgData2Gui(a.struJpegWithAppendData.pJpegPicBuff, a.struJpegWithAppendData.dwJpegPicLen, a.iDeviceKey);
-			clock_t stop1 = clock();
-			long t1 = (stop1 - start);
-			ot.Format("2#: %d\n", t1);
-			OutputDebugString(ot);
 		}
 	}
 	return 0;
@@ -973,17 +1054,18 @@ UINT ThreadGetHotPicDataMutil3(LPVOID lpParam)
 {
 	CSLTMDlg* pDlg = (CSLTMDlg*)lpParam;
 	CameraDev a;
-	a.SetUserID(pDlg->clDevice3.UserID, 3);
-	int i; CString stLogString;
+
+	a.SetUserID(pDlg->clDevice[2].UserID, 3);
+	CString stLogString;
 	if (a.lUserID < 0)
 	{
 		pDlg->SetDlgItemText(IDC_STATIC_LOG, "抓热图：有设备还未登陆！");
 	}
 	else
 	{
-		pDlg->clDevice3.getHotPic = TRUE;
+		pDlg->clDevice[2].getHotPic = TRUE;
 
-		for (i = 0; (TRUE == pDlg->clDevice3.getHotPic); i++)
+		for (;(TRUE == pDlg->clDevice[2].getHotPic);)
 		{
 			//获取热图的SDK接口
 			BOOL ERRGET;
@@ -999,87 +1081,94 @@ UINT ThreadGetHotPicDataMutil3(LPVOID lpParam)
 				a.failedTime++;
 				continue;
 			}
-			//pDlg->JpgData2Gui(a.struJpegWithAppendData.pJpegPicBuff, a.struJpegWithAppendData.dwJpegPicLen, a.iDeviceKey);
-			
-			long t1 = (stop1 - start);
-			ot.Format("3#: %d\n", t1);
-			OutputDebugString(ot);
+			else
+			{
+				if (a.struJpegWithAppendData.dwP2PDataLen == PIC_WIDTH * PIC_HEIGHT * sizeof(float))
+				{
+					memcpy(g_fTempData[2], a.struJpegWithAppendData.pP2PDataBuff, a.struJpegWithAppendData.dwP2PDataLen);
+					int dev = 2;
+					cv::Point pMax;
+					float fmaxTemp;
+					pDlg->HandleTempFrame(g_fTempData[dev], pDlg->iCentroid[dev].pCentroid, pMax, fmaxTemp, dev);
+				}
+				
+			}
 		}
 	}
 	return 0;
 }
+
+
+
+/*UINT ThreadGetHotPic1(LPVOID lpParam)
+//{
+//	CSLTMDlg* pDlg = (CSLTMDlg*)lpParam;
+//	CameraDev a;
+//	CameraDev b;
+//	CameraDev c;
+//	a.SetUserID(pDlg->clDevice[0].UserID, 1);
+//	b.SetUserID(pDlg->clDevice[1].UserID, 2);
+//	c.SetUserID(pDlg->clDevice[2].UserID, 3);
+//
+//	int i; CString stLogString;
+//	if (a.lUserID < 0 || b.lUserID < 0 || c.lUserID < 0)
+//	{
+//		pDlg->SetDlgItemText(IDC_STATIC_LOG, "抓热图：有设备还未登陆！");
+//	}
+//	else
+//	{
+//		pDlg->b_getHotPic = TRUE;
+//		
+//		for (i = 0; (TRUE == pDlg->b_getHotPic); i++)
+//		{
+//			//获取热图的SDK接口
+//
+//			BOOL ERRGET1, ERRGET2, ERRGET3;
+//
+//			CString ot;
+//			clock_t start = clock();
+//			ERRGET1 = NET_DVR_CaptureJPEGPicture_WithAppendData(a.lUserID, a.channel, &a.struJpegWithAppendData);
+//			clock_t stop1 = clock();
+//			long t1 = (stop1 - start);
+//
+//			ERRGET2 = NET_DVR_CaptureJPEGPicture_WithAppendData(b.lUserID, b.channel, &b.struJpegWithAppendData);
+//			clock_t stop2 = clock();
+//			long t2 = (stop2 - stop1);
+//
+//			ERRGET3 = NET_DVR_CaptureJPEGPicture_WithAppendData(c.lUserID, c.channel, &c.struJpegWithAppendData);
+//
+//			clock_t stop3 = clock();
+//			long t3 = (stop3 - stop2);
+//
+//
+//
+//			if (TRUE != ERRGET1 || TRUE != ERRGET2 || TRUE != ERRGET3)
+//			{
+//				stLogString.Format("抓热图失败！错误信息：%s(%d)", NET_DVR_GetErrorMsg(), NET_DVR_GetLastError());
+//				pDlg->SetDlgItemText(IDC_STATIC_LOG, stLogString);
+//				a.failedTime++;
+//				continue;
+//			}
+//
+//			pDlg->JpgData2Gui(a.struJpegWithAppendData.pJpegPicBuff, a.struJpegWithAppendData.dwJpegPicLen, a.iDeviceKey);
+//			pDlg->JpgData2Gui(b.struJpegWithAppendData.pJpegPicBuff, b.struJpegWithAppendData.dwJpegPicLen, b.iDeviceKey);
+//			pDlg->JpgData2Gui(c.struJpegWithAppendData.pJpegPicBuff, c.struJpegWithAppendData.dwJpegPicLen, c.iDeviceKey);
+//
+//			clock_t end = clock();
+//			long t4 = (end - start);
+//			ot.Format("%d %d %d %d\n", t1, t2, t3, t4);
+//			OutputDebugString(ot);
+//		}
+//	}
+//
+//	// 清理控件上的画面
+//	((CStatic*)pDlg->GetDlgItem(IDC_CAMERA1))->Invalidate(TRUE);
+//	((CStatic*)pDlg->GetDlgItem(IDC_CAMERA2))->Invalidate(TRUE);
+//	((CStatic*)pDlg->GetDlgItem(IDC_CAMERA3))->Invalidate(TRUE);
+//	pDlg->b_getHotPic = FALSE;
+//	return 1;
+//}
 */
-
-
-UINT ThreadGetHotPic1(LPVOID lpParam)
-{
-	CSLTMDlg* pDlg = (CSLTMDlg*)lpParam;
-	CameraDev a;
-	CameraDev b;
-	CameraDev c;
-	a.SetUserID(pDlg->clDevice[0].UserID, 1);
-	b.SetUserID(pDlg->clDevice[1].UserID, 2);
-	c.SetUserID(pDlg->clDevice[2].UserID, 3);
-
-	int i; CString stLogString;
-	if (a.lUserID < 0 || b.lUserID < 0 || c.lUserID < 0)
-	{
-		pDlg->SetDlgItemText(IDC_STATIC_LOG, "抓热图：有设备还未登陆！");
-	}
-	else
-	{
-		pDlg->b_getHotPic = TRUE;
-		
-		for (i = 0; (TRUE == pDlg->b_getHotPic); i++)
-		{
-			//获取热图的SDK接口
-
-			BOOL ERRGET1, ERRGET2, ERRGET3;
-
-			CString ot;
-			clock_t start = clock();
-			ERRGET1 = NET_DVR_CaptureJPEGPicture_WithAppendData(a.lUserID, a.channel, &a.struJpegWithAppendData);
-			clock_t stop1 = clock();
-			long t1 = (stop1 - start);
-
-			ERRGET2 = NET_DVR_CaptureJPEGPicture_WithAppendData(b.lUserID, b.channel, &b.struJpegWithAppendData);
-			clock_t stop2 = clock();
-			long t2 = (stop2 - stop1);
-
-			ERRGET3 = NET_DVR_CaptureJPEGPicture_WithAppendData(c.lUserID, c.channel, &c.struJpegWithAppendData);
-
-			clock_t stop3 = clock();
-			long t3 = (stop3 - stop2);
-
-
-
-			if (TRUE != ERRGET1 || TRUE != ERRGET2 || TRUE != ERRGET3)
-			{
-				stLogString.Format("抓热图失败！错误信息：%s(%d)", NET_DVR_GetErrorMsg(), NET_DVR_GetLastError());
-				pDlg->SetDlgItemText(IDC_STATIC_LOG, stLogString);
-				a.failedTime++;
-				continue;
-			}
-
-			pDlg->JpgData2Gui(a.struJpegWithAppendData.pJpegPicBuff, a.struJpegWithAppendData.dwJpegPicLen, a.iDeviceKey);
-			pDlg->JpgData2Gui(b.struJpegWithAppendData.pJpegPicBuff, b.struJpegWithAppendData.dwJpegPicLen, b.iDeviceKey);
-			pDlg->JpgData2Gui(c.struJpegWithAppendData.pJpegPicBuff, c.struJpegWithAppendData.dwJpegPicLen, c.iDeviceKey);
-
-			clock_t end = clock();
-			long t4 = (end - start);
-			ot.Format("%d %d %d %d\n", t1, t2, t3, t4);
-			OutputDebugString(ot);
-		}
-	}
-
-	// 清理控件上的画面
-	((CStatic*)pDlg->GetDlgItem(IDC_CAMERA1))->Invalidate(TRUE);
-	((CStatic*)pDlg->GetDlgItem(IDC_CAMERA2))->Invalidate(TRUE);
-	((CStatic*)pDlg->GetDlgItem(IDC_CAMERA3))->Invalidate(TRUE);
-	pDlg->b_getHotPic = FALSE;
-	return 1;
-}
-
 void CSLTMDlg::OnBnClickedButtonGetHotPic()
 {
 	UpdateData(TRUE);
@@ -1088,9 +1177,9 @@ void CSLTMDlg::OnBnClickedButtonGetHotPic()
 		//开始获取热图
 
 		//AfxBeginThread(ThreadGetHotPic1, this);
-		//AfxBeginThread(ThreadGetHotPicDataMutil, this);
-		//AfxBeginThread(ThreadGetHotPicDataMutil2, this);
-		//AfxBeginThread(ThreadGetHotPicDataMutil3, this);
+		AfxBeginThread(ThreadGetHotPicDataMutil, this);
+		AfxBeginThread(ThreadGetHotPicDataMutil2, this);
+		AfxBeginThread(ThreadGetHotPicDataMutil3, this);
 
 		Sleep(300);
 
@@ -1115,15 +1204,6 @@ void CSLTMDlg::OnBnClickedButtonGetHotPic()
 			clDevice[i].llRealHandle = NET_DVR_RealPlay_V30(clDevice[i].UserID, &ClientInfo, NULL, this, bPreviewBlock);
 		}
 
-
-		//ClientInfo.hPlayWnd = GetDlgItem(IDC_CAMERA1)->GetSafeHwnd();  //窗口为空，设备SDK不解码只取流
-		//llRealHandle = NET_DVR_RealPlay_V30(clDevice.UserID, &ClientInfo, NULL, this, bPreviewBlock);
-
-		//ClientInfo.hPlayWnd = GetDlgItem(IDC_CAMERA2)->GetSafeHwnd();
-		//llRealHandle2 = NET_DVR_RealPlay_V30(clDevice2.UserID, &ClientInfo, NULL, this, bPreviewBlock);
-
-		//ClientInfo.hPlayWnd = GetDlgItem(IDC_CAMERA3)->GetSafeHwnd();
-		//llRealHandle3 = NET_DVR_RealPlay_V30(clDevice3.UserID, &ClientInfo, NULL, this, bPreviewBlock);
 
 	}
 	else
@@ -1296,7 +1376,6 @@ void MoveFileAndRename(int pos)
 
 }
 
-
 void CheackFileMove(int pos, __time64_t tName)
 {
 	g_tGetFileTime[pos] = tName;
@@ -1305,6 +1384,9 @@ void CheackFileMove(int pos, __time64_t tName)
 
 }
 
+// Threshold-阈值 Centroid-质心
+#define TempThreshold 110.0 //温度阈值
+#define PointThreshold 5000 //高温点阈值
 
 static inline bool ContoursSortFun(vector<cv::Point> contour1, vector<cv::Point> contour2)
 {
@@ -1315,173 +1397,154 @@ static inline bool ContoursSortFun(vector<cv::Point> contour1, vector<cv::Point>
 // 输出最高温点 最高温坐标 质心坐标
 void CSLTMDlg::HandleTempFrame(float* tempMatrix, Point &pCentroid, Point &pMaxTempPoint, float &fMaxTemp, int dev)
 {
-	//Mat tempDataMat(PIC_HEIGHT, PIC_WIDTH, CV_32FC1, tempMatrix);
-	//double	minVal, maxVal;
-	//int		minIdx[2] = {}, maxIdx[2] = {};
-	//cv::minMaxIdx(tempDataMat, &minVal, &maxVal, minIdx, maxIdx);
-	//Point maxPoint(maxIdx[1], maxIdx[0]);
+	Mat tempDataMat(PIC_HEIGHT, PIC_WIDTH, CV_32FC1, tempMatrix);
+	double	minVal, maxVal;
+	int		minIdx[2] = {}, maxIdx[2] = {};
+	cv::minMaxIdx(tempDataMat, &minVal, &maxVal, minIdx, maxIdx);
+	
+	Point maxPoint(maxIdx[1], maxIdx[0]);
+	
+	Point centroidPoint(-1, -1); //无高温区块，质心初始化为(-1, -1)
 
+	fMaxTemp = maxVal;
+	pCentroid = centroidPoint;
+	pMaxTempPoint = maxPoint;
 
-	//Point centroidPoint(-1, -1); //无高温区块，质心初始化为(-1, -1)
+	// 获取二值化图与统计高温点
+	Mat imgBinarization = Mat(PIC_HEIGHT, PIC_WIDTH, CV_8UC1);
 
-	//// 获取二值化图与统计高温点
-	//Mat imgBinarization = Mat(PIC_HEIGHT, PIC_WIDTH, CV_8UC1);
+	float	fTempThreshold	= TempThreshold; //温度阈值
 
-	//float	fTempThreshold	= 90.0; //温度阈值
-	//int		iThreshold	= 10000;//高温点阈值
+	int		iThreshold	= g_mapPointThreshold[g_devPosition].iThreshold[dev]; // 个性化该位置该画面的温度点阈值
 
-	//int		iPointSum	= 0;	//高温点总计
-	//int		iPointXSum = 0, iTargetPointSum = 0, iPointYSum = 0;
+	int		iPointSum	= 0; //高温点总计
+	int		iPointXSum	= 0, iTargetPointSum = 0, iPointYSum = 0;
 
-	//for (int i = 0; i < PIC_HEIGHT; i++)
-	//{
-	//	for (int j = 0; j < PIC_WIDTH; j++)
-	//	{
-	//		if (tempDataMat.at<float>(i, j) > fTempThreshold)
-	//		{
-	//			iPointSum++;
-	//			imgBinarization.at<uchar>(i, j) = 255;
-	//			iTargetPointSum++;
-	//			iPointXSum += j;
-	//			iPointYSum += i;
-	//		}
-	//		else
-	//		{
-	//			imgBinarization.at<uchar>(i, j) = 0;
-	//		}
-	//	}
-	//}
+	for (int i = 0; i < PIC_HEIGHT; i++)
+	{
+		for (int j = 0; j < PIC_WIDTH; j++)
+		{
+			if (tempDataMat.at<float>(i, j) > fTempThreshold)
+			{
+				iPointSum++;
+				imgBinarization.at<uchar>(i, j) = 255;
+				iTargetPointSum++;
+				iPointXSum += j;
+				iPointYSum += i;
+			}
+			else
+			{
+				imgBinarization.at<uchar>(i, j) = 0;
+			}
+		}
+	}
 
-	//// 阈值判断
-	//if (iPointSum > iThreshold)
-	//{
-	//	// 获取开操作之后的灰度图开始
-	//	Mat imgAfterOpen = Mat(PIC_HEIGHT, PIC_WIDTH, CV_8UC1);
+	// 阈值判断
+	if (iPointSum > iThreshold)
+	{
+		// 获取开操作之后的灰度图开始
+		Mat imgAfterOpen = Mat(PIC_HEIGHT, PIC_WIDTH, CV_8UC1);
 
-	//	//对图像进行开操作，排除干扰点
-	//	Mat kernel = getStructuringElement(MORPH_RECT, Size(5, 5));
-	//	morphologyEx(imgBinarization, imgAfterOpen, 2, kernel);
+		//对图像进行开操作，排除干扰点
+		Mat kernel = getStructuringElement(MORPH_RECT, Size(5, 5));
+		morphologyEx(imgBinarization, imgAfterOpen, 2, kernel);
 
-	//	// 轮廓合集contours，hierarchy用于Tree状结构，在此无其他作用
-	//	vector<vector<Point>> contours;
-	//	vector<Vec4i> hierarchy;
+		// 轮廓合集contours，hierarchy用于Tree状结构，在此无其他作用
+		vector<vector<Point>> contours;
+		vector<Vec4i> hierarchy;
 
-	//	/* CV_RETR_EXTERNAL 只检测最外围轮廓                                     */
-	//	/* CV_CHAIN_APPROX_SIMPLE 仅保存轮廓的拐点信息                           */
-	//	/* 特别注意 该函数在某些版本OPENCV 编译时会导致内存泄漏                    */
-	//	findContours(imgAfterOpen, contours, hierarchy, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_SIMPLE);
+		/* CV_RETR_EXTERNAL 只检测最外围轮廓                                     */
+		/* CV_CHAIN_APPROX_SIMPLE 仅保存轮廓的拐点信息                           */
+		/* 特别注意 该函数在某些版本OPENCV 编译时会导致内存泄漏                    */
+		findContours(imgAfterOpen, contours, hierarchy, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_SIMPLE);
 
-	//	Mat imageContours = Mat::zeros(imgAfterOpen.size(), CV_8UC1);
-	//	Mat Contours = Mat::zeros(imgAfterOpen.size(), CV_8UC1);
+		Mat imageContours = Mat::zeros(imgAfterOpen.size(), CV_8UC1);
+		Mat Contours = Mat::zeros(imgAfterOpen.size(), CV_8UC1);
 
-	//	sort(contours.begin(), contours.end(), ContoursSortFun); //轮廓按面积由大至小排序
+		sort(contours.begin(), contours.end(), ContoursSortFun); //轮廓按面积由大至小排序
 
-	//	double dLengthWidthRatio = 0.0;
-	//	Point pMaxtempPoint(0, 0);
-	//	bool bContoursUseless = false;
-	//	if (contours.size() >= 2)
-	//	{
-	//		if (contourArea(contours[1]) < 1000)
-	//		{
-	//			bContoursUseless = true;
-	//		}
-	//	}
-	//	if (contours.size() < 2 || bContoursUseless) // 一整块联通的区域情况下
-	//	{
-	//		Rect rMaxRect = boundingRect(contours[0]);
+		double dLengthWidthRatio = 0.0;
+		Point pREPMaxtempPoint(0, 0);
+		Rect rects1 = boundingRect(contours[0]);
 
-	//		// 长宽比
-	//		dLengthWidthRatio = (rMaxRect.height*1.0) / rMaxRect.width;
+		if (rects1.area() > 0.8*PointThreshold)
+		{
+			// 长宽比
+			dLengthWidthRatio = (rects1.height*1.0) / rects1.width;
 
-	//		// 排除铁包上部0.2区域求温度值（可能有裸露的铁包口部分）	在
-	//		Point startPoint = rMaxRect.tl();
-	//		startPoint.y = startPoint.y + (int)(0.2 * rMaxRect.height);
-	//		Mat TempDataMatREP(tempDataMat, Rect(startPoint, rMaxRect.br()));
+			// 排除铁包上部0.2区域求温度值（可能有裸露的铁包口部分）	在
+			Point startPoint = rects1.tl();
+			startPoint.y = startPoint.y + (int)(0.2 * rects1.height);
+			Mat TempDataMatREP(tempDataMat, Rect(startPoint, rects1.br()));
 
-	//		double REPminVal, REPmaxVal;
-	//		int   REPminIdx[2] = {}, REPmaxIdx[2] = {};	// 修正后的minnimum Index, maximum Index
-	//		cv::minMaxIdx(TempDataMatREP, &REPminVal, &REPmaxVal, REPminIdx, REPmaxIdx);
+			double REPminVal, REPmaxVal;
+			int   REPminIdx[2] = {}, REPmaxIdx[2] = {};	// 修正后的minnimum Index, maximum Index
+			cv::minMaxIdx(TempDataMatREP, &REPminVal, &REPmaxVal, REPminIdx, REPmaxIdx);
 
-	//		pMaxtempPoint.x = startPoint.x + REPmaxIdx[1];
-	//		pMaxtempPoint.y = startPoint.y + REPmaxIdx[0];
+			pREPMaxtempPoint.x = startPoint.x + REPmaxIdx[1];
+			pREPMaxtempPoint.y = startPoint.y + REPmaxIdx[0];
 
-	//		maxVal = REPmaxVal;
-	//	}
-	//	else // 存在多块大目标区域的情况下 主要以前两部分面积计算
-	//	{
-	//		Rect rRects1 = boundingRect(contours[0]);
-	//		Rect rRects2 = boundingRect(contours[1]);
-	//		if (((rRects2.height* 1.0) / rRects2.width) < 0.3) // 长宽比小于0.3 默认第二部分为天车臂
-	//		{
-	//			dLengthWidthRatio = (rRects1.height  * 1.0) / rRects1.width;
+			maxVal = REPmaxVal;
+			maxPoint = pREPMaxtempPoint; // 将高温点修正到包上
 
-	//			// 针对第一部分区域求值
-	//			Point startpoint = rRects1.tl();
-	//			Mat TempDataMatREP(tempDataMat, Rect(startpoint, rRects1.br()));
+			centroidPoint.x = rects1.tl().x + (rects1.br().x - rects1.tl().x) / 2;
+			centroidPoint.y = rects1.tl().y + (rects1.br().y - rects1.tl().y) / 2;
 
-	//			double REPminVal, REPmaxVal;
-	//			int   REPminIdx[2] = {}, REPmaxIdx[2] = {};	// 修正后的minnimum Index, maximum Index
-	//			cv::minMaxIdx(TempDataMatREP, &REPminVal, &REPmaxVal, REPminIdx, REPmaxIdx);
+			fMaxTemp = maxVal;
+			pCentroid = centroidPoint;
+			pMaxTempPoint = maxPoint;
+		}
+		else
+		{
+			pCentroid = Point(-1, -1);
+			return;
+		}
+		
+		// 图像截取条件
+		// 中心区域是否被覆盖
+		Rect rTopRect = Rect(162, 67, 60, 20);
+		Rect rMiddleRect = Rect(162, 134, 60, 20);
+		Rect rBottomRect = Rect(162, 201, 60, 20);
+		Rect rRightRect = Rect(320, 60, 20, 150);
+		Rect rLeftRect = Rect(32, 60, 20, 150);
+		Scalar MiddleValue = mean(imgBinarization(rMiddleRect));
+		float fMiddleMeanValue = MiddleValue.val[0];
+		Scalar TopValue = mean(imgBinarization(rTopRect));
+		float fTopValue = TopValue.val[0];
+		Scalar BottomValue = mean(imgBinarization(rBottomRect));
+		float fBottomMeanValue = BottomValue.val[0];
+		Scalar RightValue = mean(imgBinarization(rRightRect));
+		float fRightMeanValue = RightValue.val[0];
+		Scalar LeftValue = mean(imgBinarization(rLeftRect));
+		float fLeftMeanValue = LeftValue.val[0];
 
-	//			pMaxtempPoint.x = startpoint.x + REPmaxIdx[1];
-	//			pMaxtempPoint.y = startpoint.y + REPmaxIdx[0];
+		CTime tm; tm = CTime::GetCurrentTime();
+		CTimeSpan span = tm - ctInitTime[dev];
+		LONG tspan = span.GetTotalSeconds();
 
-	//			maxVal = REPmaxVal;
-	//		}
-	//		else
-	//		{
-	//			dLengthWidthRatio = ((rRects1.height + rRects2.height)*1.0) / (rRects1.width*1.0);
+		bool* bJudgeCon = g_mapSaveJudge[g_devPosition].iJudge[dev];
 
-	//			//针对第一部分区域求值
-	//			Point startpoint1 = rRects1.tl();
-	//			Mat TempDataMatREP1(tempDataMat, Rect(startpoint1, rRects1.br()));
-
-	//			double REPminVal1, REPmaxVal1;
-	//			int   REPminIdx1[2] = {}, REPmaxIdx1[2] = {};	// 修正后的minnimum Index, maximum Index
-	//			cv::minMaxIdx(TempDataMatREP1, &REPminVal1, &REPmaxVal1, REPminIdx1, REPmaxIdx1);
-
-	//			//针对第二部分区域求值
-	//			Point startpoint2 = rRects2.tl();
-	//			Mat TempDataMatREP2(tempDataMat, Rect(startpoint2, rRects2.br()));
-
-	//			double REPminVal2, REPmaxVal2;
-	//			int   REPminIdx2[2] = {}, REPmaxIdx2[2] = {};	// 修正后的minnimum Index, maximum Index
-	//			cv::minMaxIdx(TempDataMatREP2, &REPminVal2, &REPmaxVal2, REPminIdx2, REPmaxIdx2);
-
-	//			if (REPmaxVal1 > REPmaxVal2)
-	//			{
-	//				maxVal = REPmaxVal1;
-	//				pMaxtempPoint.x = startpoint1.x + REPmaxIdx1[1];
-	//				pMaxtempPoint.y = startpoint1.y + REPmaxIdx1[0];
-	//			}
-	//			else
-	//			{
-	//				maxVal = REPmaxVal2;
-	//				pMaxtempPoint.x = startpoint2.x + REPmaxIdx2[1];
-	//				pMaxtempPoint.y = startpoint2.y + REPmaxIdx2[0];
-	//			}
-	//		}
-	//	}
-	//	maxPoint = pMaxtempPoint; // 将高温点修正到铁包上
-
-	//	centroidPoint.x = (iPointXSum / iTargetPointSum);
-	//	centroidPoint.y = (iPointYSum / iTargetPointSum);
-
-	//	// -------------- 已获取质心信息
-
-
-	//	CTime tm; tm = CTime::GetCurrentTime();
-	//	CTimeSpan span = tm - ctInitTime[dev];
-	//	LONG tspan = span.GetTotalSeconds();
-
-	//	// 图像存储条件 质心在中间访问 时差1分钟防止重复
-	//	if (tspan > 60 && pCentroid.x > 185 && pCentroid.x < 195 && pCentroid.y > 135 && pCentroid.y < 155)
-	//	{
-	//		WriteTempDataFile(dev);
-	//		ctInitTime[dev] = tm;
-	//	}
-	//}
-	//return;
+		// 个性化图像存储条件 时差1分钟防止重复
+		if (tspan > 60 
+			&& (fMiddleMeanValue > 200 || bJudgeCon[0])
+			&& (fTopValue > 100 || bJudgeCon[1])
+			&& (fBottomMeanValue > 100 || bJudgeCon[2])
+			&& (fRightMeanValue < 20 || bJudgeCon[3])
+			&& (fLeftMeanValue < 20 || bJudgeCon[4]))
+		{
+			WriteTempDataFile(dev);
+			ctInitTime[dev] = tm;
+		}
+		return;
+	}
+	else
+	{
+		centroidPoint.x = (iPointXSum / iTargetPointSum);
+		centroidPoint.y = (iPointYSum / iTargetPointSum);
+		pCentroid = centroidPoint;
+		pMaxTempPoint = maxPoint;
+		return;
+	}
 }
 
 
@@ -1622,7 +1685,9 @@ void CSLTMDlg::DataTransfer(unsigned char* pBGR, int bgrLen, float* tempMatrix, 
 	{
 		memcpy(g_fTempData[dev], tempMatrix, width * height * sizeof(float));
 		cv::Point pMax;
-		GetCentroid(tempMatrix, iCentroid[dev].pCentroid, pMax, dev);
+		float fmaxTemp;
+		//GetCentroid(tempMatrix, iCentroid[dev].pCentroid, pMax, dev);
+		HandleTempFrame(tempMatrix, iCentroid[dev].pCentroid, pMax, fmaxTemp, dev);
 		if (iCentroid[dev].pCentroid != cv::Point(-1, -1))
 		{
 			iCentroid[dev].iCentroidExist = 1;
@@ -1724,10 +1789,6 @@ void CSLTMDlg::SetInfraredData(char *str)
 }
 
 
-// Threshold-阈值 Centroid-质心
-#define TempThreshold 110.0 //温度阈值
-#define PointThreshold 5000 //高温点阈值
-
 /************************************************************************/
 /* 摄像头图像质心判断模块                                                 */
 /************************************************************************/
@@ -1803,8 +1864,6 @@ bool CSLTMDlg::GetCentroid(float* tempMatrix, Point &pCentroid, Point &pMaxTempP
 
 		pCentroid = centroid;
 		pMaxTempPoint = point;
-
-
 
 
 		// 中心区域是否被覆盖
