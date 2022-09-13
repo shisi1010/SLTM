@@ -22,7 +22,7 @@
 
 #define SETTING_FILE  _T("C:\\SLTM\\SLTMsetting.ini")
 
-#define LOCAL_TEST 1
+//#define LOCAL_TEST 1
 
 #ifdef LOCAL_TEST
 #define WRITE_FILE_PATH _T("\\\\127.0.0.1\\Share\\savetemp\\")
@@ -181,6 +181,9 @@ BOOL CSLTMDlg::OnInitDialog()
 	clDevice[0].setIP("192.168.1.31");
 	clDevice[1].setIP("192.168.1.32");
 	clDevice[2].setIP("192.168.1.33");
+	g_devPosition = "7";
+	g_devTitleName = g_mapPositionName[g_devPosition];
+	GetDlgItem(IDC_STATIC_TITLE)->SetWindowText(g_devTitleName);
 #endif
 
 	SetTimer(nIDEventUpdateAlert, 1000, NULL);
@@ -669,6 +672,7 @@ void CSLTMDlg::OnBnClickedButtonLogin()
 		GetDlgItem(IDC_BUTTON_LOGOUT)->EnableWindow(TRUE);
 		GetDlgItem(IDC_BUTTON_Get_Hot_Pic)->EnableWindow(TRUE);
 	} while (FALSE);
+	OnBnClickedButtonGetHotPic();
 	UpdateData(FALSE);
 #else
 	for (int i = 0; i < DEV_NUM; i++)
@@ -959,7 +963,7 @@ UINT ThreadGetHotPicDataMutil(LPVOID lpParam)
 			clock_t start = clock();
 			ERRGET = NET_DVR_CaptureJPEGPicture_WithAppendData(a.lUserID, a.channel, &a.struJpegWithAppendData);
 			
-			if (TRUE != ERRGET)
+			if (TRUE == ERRGET)
 			{
 				//获取热图的SDK接口
 				BOOL ERRGET;
@@ -1016,7 +1020,7 @@ UINT ThreadGetHotPicDataMutil2(LPVOID lpParam)
 			clock_t start = clock();
 			ERRGET = NET_DVR_CaptureJPEGPicture_WithAppendData(a.lUserID, a.channel, &a.struJpegWithAppendData);
 
-			if (TRUE != ERRGET)
+			if (TRUE == ERRGET)
 			{
 				//获取热图的SDK接口
 				BOOL ERRGET;
@@ -1442,6 +1446,8 @@ void CSLTMDlg::HandleTempFrame(float* tempMatrix, Point &pCentroid, Point &pMaxT
 	// 阈值判断
 	if (iPointSum > iThreshold)
 	{
+		centroidPoint.x = (iPointXSum / iPointSum);
+		centroidPoint.y = (iPointYSum / iPointSum);
 		// 获取开操作之后的灰度图开始
 		Mat imgAfterOpen = Mat(PIC_HEIGHT, PIC_WIDTH, CV_8UC1);
 
@@ -1539,8 +1545,6 @@ void CSLTMDlg::HandleTempFrame(float* tempMatrix, Point &pCentroid, Point &pMaxT
 	}
 	else
 	{
-		centroidPoint.x = (iPointXSum / iTargetPointSum);
-		centroidPoint.y = (iPointYSum / iTargetPointSum);
 		pCentroid = centroidPoint;
 		pMaxTempPoint = maxPoint;
 		return;
