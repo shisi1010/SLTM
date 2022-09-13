@@ -958,38 +958,23 @@ UINT ThreadGetHotPicDataMutil(LPVOID lpParam)
 		{
 			//获取热图的SDK接口
 			BOOL ERRGET;
-
-			CString ot;
-			clock_t start = clock();
 			ERRGET = NET_DVR_CaptureJPEGPicture_WithAppendData(a.lUserID, a.channel, &a.struJpegWithAppendData);
-			
-			if (TRUE == ERRGET)
+			if (TRUE != ERRGET)
 			{
-				//获取热图的SDK接口
-				BOOL ERRGET;
-
-				CString ot;
-				clock_t start = clock();
-				ERRGET = NET_DVR_CaptureJPEGPicture_WithAppendData(a.lUserID, a.channel, &a.struJpegWithAppendData);
-				clock_t stop1 = clock();
-				if (TRUE != ERRGET)
+				stLogString.Format("抓热图失败！错误信息：%s(%d)", NET_DVR_GetErrorMsg(), NET_DVR_GetLastError());
+				pDlg->SetDlgItemText(IDC_STATIC_LOG, stLogString);
+				a.failedTime++;
+				continue;
+			}
+			else
+			{
+				if (a.struJpegWithAppendData.dwP2PDataLen == PIC_WIDTH * PIC_HEIGHT * sizeof(float))
 				{
-					stLogString.Format("抓热图失败！错误信息：%s(%d)", NET_DVR_GetErrorMsg(), NET_DVR_GetLastError());
-					pDlg->SetDlgItemText(IDC_STATIC_LOG, stLogString);
-					a.failedTime++;
-					continue;
-				}
-				else
-				{
-					if (a.struJpegWithAppendData.dwP2PDataLen == PIC_WIDTH * PIC_HEIGHT * sizeof(float))
-					{
-						memcpy(g_fTempData[0], a.struJpegWithAppendData.pP2PDataBuff, a.struJpegWithAppendData.dwP2PDataLen);
-						int dev = 0;
-						cv::Point pMax;
-						float fmaxTemp;
-						pDlg->HandleTempFrame(g_fTempData[dev], pDlg->iCentroid[dev].pCentroid, pMax, fmaxTemp, dev);
-					}
-					
+					memcpy(g_fTempData[0], a.struJpegWithAppendData.pP2PDataBuff, a.struJpegWithAppendData.dwP2PDataLen);
+					int dev = 0;
+					cv::Point pMax;
+					float fmaxTemp;
+					pDlg->HandleTempFrame(g_fTempData[dev], pDlg->iCentroid[dev].pCentroid, pMax, fmaxTemp, dev);
 				}
 			}
 		}
@@ -1019,35 +1004,25 @@ UINT ThreadGetHotPicDataMutil2(LPVOID lpParam)
 			CString ot;
 			clock_t start = clock();
 			ERRGET = NET_DVR_CaptureJPEGPicture_WithAppendData(a.lUserID, a.channel, &a.struJpegWithAppendData);
-
-			if (TRUE == ERRGET)
+			clock_t stop1 = clock();
+			if (TRUE != ERRGET)
 			{
-				//获取热图的SDK接口
-				BOOL ERRGET;
+				stLogString.Format("抓热图失败！错误信息：%s(%d)", NET_DVR_GetErrorMsg(), NET_DVR_GetLastError());
+				pDlg->SetDlgItemText(IDC_STATIC_LOG, stLogString);
+				a.failedTime++;
+				continue;
+			}
+			else
+			{
+				if (a.struJpegWithAppendData.dwP2PDataLen == PIC_WIDTH * PIC_HEIGHT * sizeof(float))
+				{
+					memcpy(g_fTempData[1], a.struJpegWithAppendData.pP2PDataBuff, a.struJpegWithAppendData.dwP2PDataLen);
+					int dev = 1;
+					cv::Point pMax;
+					float fmaxTemp;
+					pDlg->HandleTempFrame(g_fTempData[dev], pDlg->iCentroid[dev].pCentroid, pMax, fmaxTemp, dev);
+				}
 
-				CString ot;
-				clock_t start = clock();
-				ERRGET = NET_DVR_CaptureJPEGPicture_WithAppendData(a.lUserID, a.channel, &a.struJpegWithAppendData);
-				clock_t stop1 = clock();
-				if (TRUE != ERRGET)
-				{
-					stLogString.Format("抓热图失败！错误信息：%s(%d)", NET_DVR_GetErrorMsg(), NET_DVR_GetLastError());
-					pDlg->SetDlgItemText(IDC_STATIC_LOG, stLogString);
-					a.failedTime++;
-					continue;
-				}
-				else
-				{
-					if (a.struJpegWithAppendData.dwP2PDataLen == PIC_WIDTH * PIC_HEIGHT * sizeof(float))
-					{
-						memcpy(g_fTempData[1], a.struJpegWithAppendData.pP2PDataBuff, a.struJpegWithAppendData.dwP2PDataLen);
-						int dev = 1;
-						cv::Point pMax;
-						float fmaxTemp;
-						pDlg->HandleTempFrame(g_fTempData[dev], pDlg->iCentroid[dev].pCentroid, pMax, fmaxTemp, dev);
-					}
-					
-				}
 			}
 		}
 	}
