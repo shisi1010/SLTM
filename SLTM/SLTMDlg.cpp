@@ -1302,7 +1302,7 @@ std::map<CString, string>g_mapPositionNameForHTTP = {
 
 void GetTimeList()
 {
-    string url = "127.0.0.1:8000/assets/timelist/?location=" + g_mapPositionNameForHTTP[g_devPosition];
+    string url = "192.168.1.200:8000/assets/timelist/?location=" + g_mapPositionNameForHTTP[g_devPosition];
     auto resp = requests::get(url.c_str());
     if (resp == NULL) {
 
@@ -1508,7 +1508,7 @@ void CSLTMDlg::deleteUselessFile()
         m_time.ReleaseBuffer();
         string s_localpos = g_mapPositionNameForHTTP[g_devPosition];
 		string jsonStr = writeJson(s_baohao, s_localpos, s_time);
-        string url = "127.0.0.1:8000/homepage/report/?location=" + s_localpos;
+        string url = "192.168.1.200:8000/homepage/report/?location=" + s_localpos;
 		auto resp = requests::post(url.c_str(), jsonStr);
         resp.reset();
 	}
