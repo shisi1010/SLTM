@@ -1834,8 +1834,11 @@ void CSLTMDlg::DataTransfer(unsigned char* pBGR, int bgrLen, float* tempMatrix, 
 
 UINT SendJsonMessage(LPVOID pParam)
 {
-	string jsonStr = writeJson("11", "T1", "2022-07-27 11:38:15");
-	auto resp = requests::post("127.0.0.1:8000/assets/report/", jsonStr);
+    string s_localpos = g_mapPositionNameForHTTP[g_devPosition];
+    string jsonStr = writeJson("11", s_localpos, "2022-09-23 11:25:15");
+    string url = "127.0.0.1:8000/homepage/report/?location=" + s_localpos;
+    auto resp = requests::post(url.c_str(), jsonStr);
+    resp.reset();
 	return 0;
 }
 
@@ -2096,9 +2099,10 @@ void CSLTMDlg::OnBnClickedButtonTestdata()
 {
 	// TODO: 在此添加控件通知处理程序代码
 	//AfxBeginThread(SendJsonMessage, this);
-	WriteTempDataFile(0);
-	WriteTempDataFile(1);
-	WriteTempDataFile(2);
+	//WriteTempDataFile(0);
+	//WriteTempDataFile(1);
+	//WriteTempDataFile(2);
+    AfxBeginThread(SendJsonMessage, this);
 }
 
 
