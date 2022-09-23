@@ -134,7 +134,8 @@ public:
 	afx_msg void OnBnClickedButtonLogin();
 	afx_msg void OnBnClickedButtonQuit();
 	afx_msg void OnClose();
-	//void HandleTempFrame(float* tempMatrix);
+
+    //void HandleTempFrame(float* tempMatrix);
 
 	void HandleTempFrame(float* tempMatrix, Point &pCentroid, Point &pMaxTempPoint, float &fMaxTemp, int dev);
 	void DataTransfer(unsigned char* pBGR, int bgrLen, float* tempMatrix, int width, int height, int dev);
@@ -152,7 +153,7 @@ public:
 
 	CBrush m_brushBack;
 
-
+    void GetTimeList();
 	void WriteTempDataFile(int n);
 	void CheackFileMove(__time64_t tName, int dev);
 	void MoveFileAndRename(int pos);

@@ -26,6 +26,7 @@
 
 #ifdef LOCAL_TEST
 #define WRITE_FILE_PATH _T("\\\\127.0.0.1\\Share\\savetemp\\")
+#define END_FILE_PATH _T("\\\\127.0.0.1\\Share\\data\\")
 #else
 #define WRITE_FILE_PATH _T("\\\\192.168.1.200\\Share\\savetemp\\")
 #define END_FILE_PATH _T("\\\\192.168.1.200\\Share\\data\\")
@@ -1300,10 +1301,15 @@ std::map<CString, string>g_mapPositionNameForHTTP = {
 	]
 }
 */
-
-void GetTimeList()
+void CSLTMDlg::GetTimeList()
 {
+
+#ifdef LOCAL_TEST
+    string url = "127.0.0.1:8000/assets/timelist/?location=" + g_mapPositionNameForHTTP[g_devPosition];
+#else
     string url = "192.168.1.200:8000/homepage/timelist/?location=" + g_mapPositionNameForHTTP[g_devPosition];
+#endif
+    
     auto resp = requests::get(url.c_str());
     if (resp == NULL) {
 
@@ -1330,6 +1336,18 @@ void GetTimeList()
                 LONG templong = atol(tempstr.c_str());
                 g_BoahaoTimeList[k] = templong;
             }
+        }
+        if (g_BaohaoKey)
+        {
+            CTime m_showTime = g_BoahaoTimeList[0];
+            CString m_showstr;
+            m_showstr = m_showTime.Format("%Y-%m-%d %H:%M:%S");
+
+            CString m_shownum;
+            m_shownum.Format("%d", g_BaohaoList[0]);
+
+            m_showstr = "最近包的时间：" + m_showstr +"   包号为：" + m_shownum;
+            GetDlgItem(IDC_STATIC_TIMELIST)->SetWindowText(m_showstr);
         }
     }
 }
