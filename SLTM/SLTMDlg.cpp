@@ -41,7 +41,7 @@ CTime ctInitTime[3];
 CString g_Baohao;
 int g_BaohaoList[11];
 LONG g_BoahaoTimeList[11];
-
+int g_BaohaoKey;
 //新文件名称，判断文件是否需要删除用
 CString g_NowFileFath;
 
@@ -206,6 +206,8 @@ BOOL CSLTMDlg::OnInitDialog()
 	OnBnClickedButtonLogin();
 #endif
 
+
+    SetTimer(nIDEventGetTimeList, 20000, 0);
 
 	return TRUE;  // 除非将焦点设置到控件，否则返回 TRUE
 }
@@ -1298,40 +1300,39 @@ std::map<CString, string>g_mapPositionNameForHTTP = {
 }
 */
 
-void GetTimeList(int dev)
+void GetTimeList()
 {
-	string url = "127.0.0.1/assets/timelist/?location=" + g_mapPositionNameForHTTP[g_devPosition];
-	auto resp = requests::get(url.c_str());
-	if (resp)
-	{
-		int statuscode = resp->status_code;
-		if (statuscode == 200)
-		{
-			string requestJson = resp->body.c_str();
-			hv::Json root;
-			root = hv::Json::parse(requestJson);
+    string url = "127.0.0.1:8000/assets/timelist/?location=" + g_mapPositionNameForHTTP[g_devPosition];
+    auto resp = requests::get(url.c_str());
+    if (resp == NULL) {
 
-			int tilength = root["timelist"].size();
-			int m_BaohaoKey = 0;
-			for (int k = 0; k < tilength; k++)
-			{
-				m_BaohaoKey++;
-				string tempstr = root["timelist"][k]["number"];
-				int tempint = atoi(tempstr.c_str());
-				tempstr = root["timelist"][k]["time"];
-				LONG templong = atol(tempstr.c_str());
+    }
+    else {
+        //printf("%d %s\r\n", resp->status_code, resp->status_message());
+        int statuscode = resp->status_code;
 
-				PositionList[dev].g_BaohaoList[k] = tempint;
-				PositionList[dev].g_BoahaoTimeList[k] = templong;
+        if (statuscode == 200)
+        {
+            string requestJson = resp->body.c_str();
+            hv::Json root;
+            root = hv::Json::parse(requestJson);
 
-				//g_BaohaoList[k] = tempint;
-				//g_BoahaoTimeList[k] = templong;
-			}
-			PositionList[dev].BaohaoKey = m_BaohaoKey;
-		}
-	}
-
+            int tilength = root["timelist"].size();
+            g_BaohaoKey = 0;
+            for (int k = 0; k < tilength; k++)
+            {
+                g_BaohaoKey++;
+                string tempstr = root["timelist"][k]["baohao"];
+                int tempint = atoi(tempstr.c_str());
+                g_BaohaoList[k] = tempint;
+                tempstr = root["timelist"][k]["time"];
+                LONG templong = atol(tempstr.c_str());
+                g_BoahaoTimeList[k] = templong;
+            }
+        }
+    }
 }
+
 
 std::string writeJson(string baoNumber, string baoArea, string baoTime)
 {
@@ -1830,14 +1831,33 @@ void CSLTMDlg::DataTransfer(unsigned char* pBGR, int bgrLen, float* tempMatrix, 
 	}
 }
 
-
+char* UtfToGbk(const char* utf8)
+{
+    int len = MultiByteToWideChar(CP_UTF8, 0, utf8, -1, NULL, 0);
+    wchar_t* wstr = new wchar_t[len + 1];
+    memset(wstr, 0, len + 1);
+    MultiByteToWideChar(CP_UTF8, 0, utf8, -1, wstr, len);
+    len = WideCharToMultiByte(CP_ACP, 0, wstr, -1, NULL, 0, NULL, NULL);
+    char* str = new char[len + 1];
+    memset(str, 0, len + 1);
+    WideCharToMultiByte(CP_ACP, 0, wstr, -1, str, len, NULL, NULL);
+    if (wstr) delete[] wstr;
+    return str;
+}
 
 UINT SendJsonMessage(LPVOID pParam)
 {
     string s_localpos = g_mapPositionNameForHTTP[g_devPosition];
     string jsonStr = writeJson("11", s_localpos, "2022-09-23 11:25:15");
-    string url = "127.0.0.1:8000/homepage/report/?location=" + s_localpos;
+    string url = "192.168.1.200:8000/homepage/report/?location=" + s_localpos;
     auto resp = requests::post(url.c_str(), jsonStr);
+
+    if (resp!= NULL)
+    {
+        string returnStr = "success";
+        string retStr = UtfToGbk(resp->body.c_str());
+    }
+
     resp.reset();
 	return 0;
 }
@@ -2091,6 +2111,10 @@ void CSLTMDlg::OnTimer(UINT_PTR nIDEvent)
 		MoveFileAndRename(2);
 		KillTimer(nIDEventCheakFile3);
 	}
+    else if (nIDEvent == nIDEventGetTimeList)
+    {
+        GetTimeList();
+    }
 	CDialogEx::OnTimer(nIDEvent);
 }
 

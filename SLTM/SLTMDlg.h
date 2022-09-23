@@ -166,7 +166,7 @@ public:
 
 	UINT m_nDeleteFileTimer;
 	UINT_PTR nIDEventDeleteFile = 6;
-
+    UINT_PTR nIDEventGetTimeList = 7;
 	virtual BOOL PreTranslateMessage(MSG* pMsg);
 };
 
