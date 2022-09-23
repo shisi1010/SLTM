@@ -110,6 +110,7 @@ std::map<CString, JudgeBOOL>g_mapSaveJudge = {
 CString g_devPosition;
 
 int g_iFPS[3] = { 0, 0, 0 };
+int g_showFPS[3] = { 0, 0, 0 };
 __time64_t g_tGetFileTime[3] = { 0, 0, 0 };
 
 CString g_devTitleName;
@@ -1887,9 +1888,9 @@ UINT HTTPServerProc(LPVOID pParam)
 	});
 
 	router.GET("/fps", [pDlg](HttpRequest* req, HttpResponse* resp) {
-		string sfps1 = to_string(g_iFPS[0]);
-		string sfps2 = to_string(g_iFPS[1]);
-		string sfps3 = to_string(g_iFPS[2]);
+		string sfps1 = to_string(g_showFPS[0]);
+		string sfps2 = to_string(g_showFPS[1]);
+		string sfps3 = to_string(g_showFPS[2]);
 		string sfpssend = sfps1 + " " + sfps2 + " " + sfps3;
 		return resp->String(sfpssend.c_str());
 	});
@@ -2081,7 +2082,10 @@ void CSLTMDlg::OnTimer(UINT_PTR nIDEvent)
 	{
 		CString csFPS;
 		csFPS.Format("%d %d %d", g_iFPS[0], g_iFPS[1], g_iFPS[2]);
-
+        for (int i = 0; i < 3; i++)
+        {
+            g_showFPS[i] == g_iFPS[3];
+        }
 		GetDlgItem(IDC_STATIC_STATUS)->SetWindowText(csFPS);
 		memset(g_iFPS, 0, sizeof(g_iFPS));
 	}
