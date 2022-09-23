@@ -28,6 +28,7 @@
 #define WRITE_FILE_PATH _T("\\\\127.0.0.1\\Share\\savetemp\\")
 #else
 #define WRITE_FILE_PATH _T("\\\\192.168.1.200\\Share\\savetemp\\")
+#define END_FILE_PATH _T("\\\\192.168.1.200\\Share\\data\\")
 #endif
 // CSLTMDlg 对话框
 
@@ -40,7 +41,18 @@ CTime ctInitTime[3];
 CString g_Baohao;
 int g_BaohaoList[11];
 LONG g_BoahaoTimeList[11];
-int g_BaohaoKey = 0;
+
+//新文件名称，判断文件是否需要删除用
+CString g_NowFileFath;
+
+struct NumberTime
+{
+	int g_BaohaoList[10];
+	LONG g_BoahaoTimeList[10];
+	int BaohaoKey = 0;
+};
+
+NumberTime PositionList[3];
 
 std::map<CString, CString>g_mapPositionName = {
 	{"1", "1号LF精炼位"}, {"2","1号炉钢包"}, {"3","2号炉钢包"}, {"4","1号RH精炼位"},
@@ -241,17 +253,6 @@ HCURSOR CSLTMDlg::OnQueryDragIcon()
 	return static_cast<HCURSOR>(m_hIcon);
 }
 
-
-CString CurrentTimeString() {
-	CString timeCStr;
-	CTime tm; tm = CTime::GetCurrentTime();
-
-	timeCStr.Format("%ld", tm.GetTime());
-	
-	return timeCStr;
-}
-
-
 /*************************************************
 函数名:    	ReadPara & WritePara
 函数描述:	读写相机设备参数，目前只有3个IP
@@ -337,13 +338,17 @@ void SaveSingleTemp(float *pData, CString sFileSaveName)
 }
 
 
-void WriteTempDataFile(int n)
+void CSLTMDlg::WriteTempDataFile(int n)
 {
 	CString pos; pos.Format("-%d", n);
 	std::ofstream ofile;
-	CString TempFileName = WRITE_FILE_PATH + g_devPosition + "\\" + CurrentTimeString() + pos + ".tmp";
-	CString PicFileName = WRITE_FILE_PATH + g_devPosition + "\\" + CurrentTimeString() + pos + ".jpg";
 
+	CTime tm; tm = CTime::GetCurrentTime();
+	CString csTime;
+	csTime.Format("%ld", tm.GetTime());
+
+	CString TempFileName = WRITE_FILE_PATH + g_devPosition + "\\" + csTime + pos + ".tmp";
+	CString PicFileName = WRITE_FILE_PATH + g_devPosition + "\\" + csTime + pos + ".jpg";
 
 	string s_path((LPSTR)(LPCTSTR)PicFileName);
 
@@ -351,7 +356,7 @@ void WriteTempDataFile(int n)
 
 	imwrite(s_path, g_mPicData[n]);
 	SaveSingleTemp(g_fTempData[n], TempFileName);
-
+	CheackFileMove(tm.GetTime(), n);
 	return;
 }
 
@@ -756,6 +761,9 @@ void CSLTMDlg::JpgData2Gui(char* pJpg, int nJpgLen, int Key)
 				image.Destroy();
 				if (SUCCEEDED(image.Load(pStream)))
 				{
+					Mat tempmat(PIC_HEIGHT, PIC_WIDTH, CV_8UC3, pData);
+					g_mPicData[Key - 1] = tempmat;
+
 					RECT rect;
 					::GetClientRect(DCposition->GetSafeHwnd(), &rect);
 
@@ -1237,16 +1245,66 @@ void CSLTMDlg::OnClose()
 }
 
 
-void GetTimeList()
-{
-	auto resp = requests::get("127.0.0.1/assets/timelist/");
-	if (resp == NULL) {
-		OutputDebugString("TimeList Error!");
-	}
-	else {
-		//printf("%d %s\r\n", resp->status_code, resp->status_message());
-		int statuscode = resp->status_code;
+std::map<CString, string>g_mapPositionNameForHTTP = {
+	{"1", "LF1"}, {"2","F1"}, {"3","F2"}, {"4","RH1"},
+	{"5", "LF2"}, {"6","F3"}, {"7","F4"}, {"8","RH2"},
+	{"9", "T1"}, {"10","T2"}
+};
 
+/*
+{
+	"timelist":[
+		{
+			"number":"07",
+			"time":"1663147878"
+		},
+		{
+			"number":"07",
+			"time":"1663147872"
+		},
+		{
+			"number":"07",
+			"time":"1663147867"
+		},
+		{
+			"number":"07",
+			"time":"1663147862"
+		},
+		{
+			"number":"07",
+			"time":"1663147857"
+		},
+		{
+			"number":"01",
+			"time":"1663147848"
+		},
+		{
+			"number":"01",
+			"time":"1663147832"
+		},
+		{
+			"number":"07",
+			"time":"1663147825"
+		},
+		{
+			"number":"07",
+			"time":"1663147817"
+		},
+		{
+			"number":"00",
+			"time":"1663147811"
+		}
+	]
+}
+*/
+
+void GetTimeList(int dev)
+{
+	string url = "127.0.0.1/assets/timelist/?location=" + g_mapPositionNameForHTTP[g_devPosition];
+	auto resp = requests::get(url.c_str());
+	if (resp)
+	{
+		int statuscode = resp->status_code;
 		if (statuscode == 200)
 		{
 			string requestJson = resp->body.c_str();
@@ -1254,47 +1312,58 @@ void GetTimeList()
 			root = hv::Json::parse(requestJson);
 
 			int tilength = root["timelist"].size();
-			g_BaohaoKey = 0;
+			int m_BaohaoKey = 0;
 			for (int k = 0; k < tilength; k++)
 			{
-				g_BaohaoKey++;
-				string tempstr = root["timelist"][k]["baohao"];
+				m_BaohaoKey++;
+				string tempstr = root["timelist"][k]["number"];
 				int tempint = atoi(tempstr.c_str());
-				g_BaohaoList[k] = tempint;
 				tempstr = root["timelist"][k]["time"];
 				LONG templong = atol(tempstr.c_str());
-				g_BoahaoTimeList[k] = templong;
+
+				PositionList[dev].g_BaohaoList[k] = tempint;
+				PositionList[dev].g_BoahaoTimeList[k] = templong;
+
+				//g_BaohaoList[k] = tempint;
+				//g_BoahaoTimeList[k] = templong;
 			}
+			PositionList[dev].BaohaoKey = m_BaohaoKey;
 		}
 	}
+
 }
 
-
-void MoveFileAndRename(int pos)
+std::string writeJson(string baoNumber, string baoArea, string baoTime)
 {
-	/************************************************************************/
-	/* 转换缓存文件为有效文件                                               */
-	/************************************************************************/
+    hv::Json root;
+    std::string out;
 
-	int m_CanBaohaoKey = -1; //判断条件
+    root["msg"]["baoNumber"] = baoNumber;
+    root["msg"]["baoArea"] = baoArea;
+    root["msg"]["baoTime"] = baoTime;
+
+    out = root.dump();
+    return out;
+}
+void CSLTMDlg::MoveFileAndRename(int pos)
+{
+	int m_IsNumberMatchTime = -1; //判断条件
 
 	//获取正在处理的数据名（即时间）
 	CTime t;
 	t = g_tGetFileTime[pos];
 
 	//读取包号时间列表
-	for (int k = 0; k < g_BaohaoKey; k++)
+	for (int k = 0; k < PositionList[pos].BaohaoKey; k++)
 	{
 		CTime tm = g_BoahaoTimeList[k];
 
 		CTimeSpan span = t - tm;
-
 		LONG spanP = span.GetTotalSeconds();
 
-		log(spanP);
 		if (abs(spanP) < 1200) //包号和正面图片时间在90s内
 		{
-			m_CanBaohaoKey = k;
+			m_IsNumberMatchTime = k;
 		}
 	}
 
@@ -1305,21 +1374,21 @@ void MoveFileAndRename(int pos)
 	CString m_newFileName;
 
 	//判断需转移的文件名
-	m_oldFileName.Format("%ld.tmp", g_tGetFileTime[pos]);
-	m_oldFilePath.Format("D://savetemp//%d//%s", pos, m_oldFileName);
 
-
-	if (m_CanBaohaoKey != -1)
+	m_oldFileName.Format("%ld-%d.tmp", g_tGetFileTime[pos], pos);
+	m_oldFilePath = WRITE_FILE_PATH + g_devPosition + "\\" + m_oldFileName;
+    //WRITE_FILE_PATH + g_devPosition + "\\" + csTime + pos + ".tmp";
+	if (m_IsNumberMatchTime != -1)
 	{
-		if (g_BaohaoList[m_CanBaohaoKey] < 10)
+		if (g_BaohaoList[m_IsNumberMatchTime] < 10)
 		{
-			m_baohaoPath.Format(_T("0%d"), g_BaohaoList[m_CanBaohaoKey]);
+			m_baohaoPath.Format(_T("0%d"), g_BaohaoList[m_IsNumberMatchTime]);
 		}
 		else
 		{
-			m_baohaoPath.Format(_T("%d"), g_BaohaoList[m_CanBaohaoKey]);
+			m_baohaoPath.Format(_T("%d"), g_BaohaoList[m_IsNumberMatchTime]);
 		}
-		CTime m_fileTime = g_BoahaoTimeList[m_CanBaohaoKey];
+		CTime m_fileTime = g_BoahaoTimeList[m_IsNumberMatchTime];
 
 		m_newFileName = m_fileTime.Format("%Y%m%d-%H%M%S");
 	}
@@ -1329,38 +1398,135 @@ void MoveFileAndRename(int pos)
 		m_newFileName = t.Format("%Y%m%d-%H%M%S");
 	}
 
-
 	//确认新文件名
-	if (pos == 1)
+	if (pos == 0)
 	{
 		m_newFileName = m_baohaoPath + "-" + m_newFileName + "-A.tmp";
 	}
-	else if (pos == 2)
+	else if (pos == 1)
 	{
 		m_newFileName = m_baohaoPath + "-" + m_newFileName + "-B.tmp";
 	}
-	else if (pos == 3)
+	else if (pos == 2)
 	{
 		m_newFileName = m_baohaoPath + "-" + m_newFileName + "-C.tmp";
 	}
 
-	m_tempPath = "D://savetemp//" + m_newFileName;
+	m_tempPath = END_FILE_PATH + g_devPosition + "\\" + m_newFileName;
 
-	if (m_CanBaohaoKey != -1)
+	if (m_IsNumberMatchTime != -1)
 	{
 		CopyFile(m_oldFilePath, m_tempPath, FALSE);
-		//g_NowFileFath = m_newFileName;
-		//m_nDeleteFileTimer = SetTimer(nIDEventDeleteFile, 20000, 0);
+		g_NowFileFath = m_newFileName;
+		m_nDeleteFileTimer = SetTimer(nIDEventDeleteFile, 20000, 0);
 	}
-
 }
 
-void CheackFileMove(int pos, __time64_t tName)
+void CSLTMDlg::deleteUselessFile()
 {
-	g_tGetFileTime[pos] = tName;
-	//SetTimer(nIDEventCheakFile, 20000, 0);
-	MoveFileAndRename(pos);
+	int fileKey[3] = { 0,0,0 };
 
+	CString normalName = g_NowFileFath.Left(19);
+	CString m_FileTitle, m_FileTitle2, m_FileTitle3;
+
+	CString pathlocal;
+    pathlocal = END_FILE_PATH + g_devPosition + "\\";
+	m_FileTitle = pathlocal + normalName + "A.tmp";
+	m_FileTitle2 = pathlocal + normalName + "B.tmp";
+	m_FileTitle3 = pathlocal + normalName + "C.tmp";
+
+	CFile tmptmp;
+	if (!tmptmp.Open(m_FileTitle, CFile::modeRead))
+	{
+		fileKey[0] = 0;
+	}
+	else
+	{
+		fileKey[0] = 1;
+        tmptmp.Close();
+	}
+
+	if (!tmptmp.Open(m_FileTitle2, CFile::modeRead))
+	{
+		fileKey[1] = 0;
+	}
+	else
+	{
+		fileKey[1] = 1;
+        tmptmp.Close();
+	}
+
+	if (!tmptmp.Open(m_FileTitle3, CFile::modeRead))
+	{
+		fileKey[2] = 0;
+	}
+	else
+	{
+		fileKey[2] = 1;
+        tmptmp.Close();
+	}
+
+	/************************************************************************/
+	/* 文件缺少2个画面 删除数据												*/
+	/* 文件正常 保存数据到历史趋势                                          */
+	/************************************************************************/
+	int keySum = 0;
+	keySum = fileKey[0] + fileKey[1] + fileKey[2];
+
+	if (keySum < 2)
+	{
+		if (fileKey[0])
+		{
+			//DeleteFile(m_FileTitle);
+		}
+		if (fileKey[1])
+		{
+			//DeleteFile(m_FileTitle2);
+		}
+		if (fileKey[2])
+		{
+			//DeleteFile(m_FileTitle3);
+		}
+	}
+	else
+	{
+		// 输出数据到数据后台
+		CString m_baohao, m_time;
+		m_baohao = normalName.Left(2);
+		m_time = normalName.Mid(3, 15);
+		m_time.Replace("-", " ");
+		m_time.Insert(13, ":");
+		m_time.Insert(11, ":");
+		m_time.Insert(6, "-");
+		m_time.Insert(4, "-");
+        
+        string s_baohao, s_time;
+        s_baohao = m_baohao.GetBuffer(0);
+        m_baohao.ReleaseBuffer();
+        s_time = m_time.GetBuffer(0);
+        m_time.ReleaseBuffer();
+        string s_localpos = g_mapPositionNameForHTTP[g_devPosition];
+		string jsonStr = writeJson(s_baohao, s_localpos, s_time);
+        string url = "127.0.0.1:8000/homepage/report/?location=" + s_localpos;
+		auto resp = requests::post(url.c_str(), jsonStr);
+        resp.reset();
+	}
+}
+
+
+void CSLTMDlg::CheackFileMove(__time64_t tName, int dev)
+{
+	g_tGetFileTime[dev] = tName;
+	switch (dev)
+	{
+	case 0:
+		SetTimer(nIDEventCheakFile, 20000, 0);
+	case 1:
+		SetTimer(nIDEventCheakFile2, 20000, 0);
+	case 2:
+		SetTimer(nIDEventCheakFile3, 20000, 0);
+	}
+//	MoveFileAndRename(dev);
 }
 
 // Threshold-阈值 Centroid-质心
@@ -1586,8 +1752,7 @@ void CSLTMDlg::BmpData2Gui(unsigned char* pBits, int width, int height, int posi
 }
 
 
-
-// 已经整合为一个函数 启用下方三函数
+// 已经整合为一个函数 弃用下方三函数
 void CSLTMDlg::BmpData2Gui0(unsigned char* pBits, int width, int height)
 {
 	if (this->GetSafeHwnd())
@@ -1643,19 +1808,6 @@ void CSLTMDlg::BmpData2Gui2(unsigned char* pBits, int width, int height)
 }
 
 
-string writeJson(CString baonumber, CString baomaxtemp, CString baoarea, CString baotime)
-{
-	hv::Json root;
-	string out;
-
-	root["msg"]["baonumber"] = (LPSTR)(LPCTSTR)baonumber;
-	//root["msg"]["baomaxtemp"] = baomaxtemp.GetBuffer(0);
-	//root["msg"]["baoarea"] = baoarea.GetBuffer(0);
-	root["msg"]["baotime"] = (LPSTR)(LPCTSTR)baotime;
-
-	out = root.dump();
-	return out;
-}
 
 
 void CSLTMDlg::DataTransfer(unsigned char* pBGR, int bgrLen, float* tempMatrix, int width, int height, int dev)
@@ -1678,39 +1830,11 @@ void CSLTMDlg::DataTransfer(unsigned char* pBGR, int bgrLen, float* tempMatrix, 
 	}
 }
 
-void SaveSingleTempDataToFile(float *pData, char *pName, int dev)
-{
-	int len_float = sizeof(float);
-	FILE *conti_buffer;//写连续保存的文件的句柄
-	char *path_save;//连续保存数据的文件路径
-	CString sFileSaveName;
-	sFileSaveName.Format("D:\\savetemp\\%d\\%s.tmp", dev, pName);
-	path_save = (LPSTR)(LPCTSTR)sFileSaveName;
-	conti_buffer = fopen(path_save, "w+b");
-	if (conti_buffer == NULL)
-	{
-		return;
-	}
-	fseek(conti_buffer, 0, SEEK_SET);   //将文件指针指向文件头/
-	fwrite(pData, len_float, PIC_WIDTH*PIC_HEIGHT, conti_buffer);
-	fclose(conti_buffer);
-}
-std::string writeJson(string baoNumber, string baoArea, string baoTime)
-{
-	hv::Json root;
-	std::string out;
 
-	root["msg"]["baoNumber"] = baoNumber;
-	root["msg"]["baoArea"] = baoArea;
-	root["msg"]["baoTime"] = baoTime;
-
-	out = root.dump();
-	return out;
-}
 
 UINT SendJsonMessage(LPVOID pParam)
 {
-	string jsonStr = writeJson("11", "1", "2022-07-27 11:38:15");
+	string jsonStr = writeJson("11", "T1", "2022-07-27 11:38:15");
 	auto resp = requests::post("127.0.0.1:8000/assets/report/", jsonStr);
 	return 0;
 }
@@ -1948,6 +2072,21 @@ void CSLTMDlg::OnTimer(UINT_PTR nIDEvent)
 		}
 		GetDlgItem(IDC_STATIC_THROUGH)->ShowWindow(bMoveThrough);
 
+	}
+	else if (nIDEvent == nIDEventCheakFile)
+	{
+		MoveFileAndRename(0);
+		KillTimer(nIDEventCheakFile);
+	}
+	else if (nIDEvent == nIDEventCheakFile2)
+	{
+		MoveFileAndRename(1);
+		KillTimer(nIDEventCheakFile2);
+	}
+	else if (nIDEvent == nIDEventCheakFile3)
+	{
+		MoveFileAndRename(2);
+		KillTimer(nIDEventCheakFile3);
 	}
 	CDialogEx::OnTimer(nIDEvent);
 }

@@ -109,6 +109,7 @@ public:
 	BOOL m_visJpegPicEnabled;
 
 	BOOL ReadPara();
+
 	int GetP2PParam();
 	void JpgData2Gui(char* pJpg, int nJpgLen, int Key);
 
@@ -120,6 +121,7 @@ public:
 	bool b_getHotPic;
 	CameraLink clDevice[3];
 #endif
+
 
 	array<ChannelControl, 3>CameraCtrl;
 
@@ -151,10 +153,19 @@ public:
 	CBrush m_brushBack;
 
 
+	void WriteTempDataFile(int n);
+	void CheackFileMove(__time64_t tName, int dev);
+	void MoveFileAndRename(int pos);
+	void deleteUselessFile();
 	// onTimer
 	UINT_PTR nIDEventUpdateFPS = 1;
 	UINT_PTR nIDEventUpdateAlert = 2;
+	UINT_PTR nIDEventCheakFile = 3;
+	UINT_PTR nIDEventCheakFile2 = 4;
+	UINT_PTR nIDEventCheakFile3 = 5;
 
+	UINT m_nDeleteFileTimer;
+	UINT_PTR nIDEventDeleteFile = 6;
 
 	virtual BOOL PreTranslateMessage(MSG* pMsg);
 };
