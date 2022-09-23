@@ -1302,7 +1302,7 @@ std::map<CString, string>g_mapPositionNameForHTTP = {
 
 void GetTimeList()
 {
-    string url = "192.168.1.200:8000/assets/timelist/?location=" + g_mapPositionNameForHTTP[g_devPosition];
+    string url = "192.168.1.200:8000/homepage/timelist/?location=" + g_mapPositionNameForHTTP[g_devPosition];
     auto resp = requests::get(url.c_str());
     if (resp == NULL) {
 
