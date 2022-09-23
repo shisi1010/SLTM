@@ -1322,7 +1322,7 @@ void GetTimeList()
             for (int k = 0; k < tilength; k++)
             {
                 g_BaohaoKey++;
-                string tempstr = root["timelist"][k]["baohao"];
+                string tempstr = root["timelist"][k]["number"];
                 int tempint = atoi(tempstr.c_str());
                 g_BaohaoList[k] = tempint;
                 tempstr = root["timelist"][k]["time"];
