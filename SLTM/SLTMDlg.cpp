@@ -203,12 +203,14 @@ BOOL CSLTMDlg::OnInitDialog()
 	SetTimer(nIDEventUpdateAlert, 1000, NULL);
 	GetDlgItem(IDC_STATIC_THROUGH)->ShowWindow(FALSE);
 	GetDlgItem(IDC_STATIC_TEMPALERT)->ShowWindow(FALSE);
+    GetDlgItem(IDC_STATIC_LOG)->ShowWindow(TRUE);
+    
 #ifdef LOCAL_TEST
 #else
 	OnBnClickedButtonLogin();
 #endif
 
-
+    GetTimeList();
     SetTimer(nIDEventGetTimeList, 20000, 0);
 
 	return TRUE;  // 除非将焦点设置到控件，否则返回 TRUE
@@ -1346,7 +1348,7 @@ void CSLTMDlg::GetTimeList()
             CString m_shownum;
             m_shownum.Format("%d", g_BaohaoList[0]);
 
-            m_showstr = "最近包的时间：" + m_showstr +"   包号为：" + m_shownum;
+            m_showstr = m_showstr +"   包号为：" + m_shownum;
             GetDlgItem(IDC_STATIC_TIMELIST)->SetWindowText(m_showstr);
         }
     }
@@ -1374,18 +1376,26 @@ void CSLTMDlg::MoveFileAndRename(int pos)
 	t = g_tGetFileTime[pos];
 
 	//读取包号时间列表
-	for (int k = 0; k < PositionList[pos].BaohaoKey; k++)
-	{
-		CTime tm = g_BoahaoTimeList[k];
+	//for (int k = 0; k < PositionList[pos].BaohaoKey; k++)
+	//{
+	//	CTime tm = g_BoahaoTimeList[k];
 
-		CTimeSpan span = t - tm;
-		LONG spanP = span.GetTotalSeconds();
+	//	CTimeSpan span = t - tm;
+	//	LONG spanP = span.GetTotalSeconds();
 
-		if (abs(spanP) < 1200) //包号和正面图片时间在90s内
-		{
-			m_IsNumberMatchTime = k;
-		}
-	}
+	//	if (abs(spanP) < 1200000) //包号和正面图片时间在90s内
+	//	{
+	//		m_IsNumberMatchTime = k;
+	//	}
+	//}
+    CTime tm = g_BoahaoTimeList[0];
+    CTimeSpan span = t - tm;
+    LONG spanP = span.GetTotalSeconds();
+    m_IsNumberMatchTime = 0;
+    CString csShow;
+    csShow.Format("时间差 %ld秒", spanP);
+    m_StaticLog = csShow;
+    //GetDlgItem(IDC_STATIC_LOG)->SetWindowText(csShow);
 
 	CString m_tempPath;
 	CString m_oldFilePath;
@@ -1434,7 +1444,7 @@ void CSLTMDlg::MoveFileAndRename(int pos)
 
 	m_tempPath = END_FILE_PATH + g_devPosition + "\\" + m_newFileName;
 
-	if (m_IsNumberMatchTime != -1)
+	//if (m_IsNumberMatchTime != -1)
 	{
 		CopyFile(m_oldFilePath, m_tempPath, FALSE);
 		g_NowFileFath = m_newFileName;
@@ -2059,6 +2069,18 @@ HBRUSH CSLTMDlg::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
 		pDC->SelectObject(&m_font);
 		pDC->SetBkMode(TRANSPARENT);
 		return m_brushBack;
+    case IDC_STATIC_TIMELIST:
+        m_font.CreatePointFont(200, "MICROSOFT YAHEI");//代表15号字体，华文行楷
+        pDC->SetTextColor(RGB(250, 250, 250));
+        pDC->SelectObject(&m_font);
+        pDC->SetBkMode(TRANSPARENT);
+        return m_brushBack;
+    case IDC_STATIC_LOG:
+        m_font.CreatePointFont(200, "MICROSOFT YAHEI");//代表15号字体，华文行楷
+        pDC->SetTextColor(RGB(250, 250, 250));
+        pDC->SelectObject(&m_font);
+        pDC->SetBkMode(TRANSPARENT);
+        return m_brushBack;
 	case IDC_STATIC_TEMPALERT:
 		m_font.CreatePointFont(200, "MICROSOFT YAHEI");
 		pDC->SetTextColor(RGB(255, 0, 0));
@@ -2102,7 +2124,7 @@ void CSLTMDlg::OnTimer(UINT_PTR nIDEvent)
 		csFPS.Format("%d %d %d", g_iFPS[0], g_iFPS[1], g_iFPS[2]);
         for (int i = 0; i < 3; i++)
         {
-            g_showFPS[i] == g_iFPS[3];
+            g_showFPS[i] = g_iFPS[3];
         }
 		GetDlgItem(IDC_STATIC_STATUS)->SetWindowText(csFPS);
 		memset(g_iFPS, 0, sizeof(g_iFPS));
@@ -2136,6 +2158,11 @@ void CSLTMDlg::OnTimer(UINT_PTR nIDEvent)
     else if (nIDEvent == nIDEventGetTimeList)
     {
         GetTimeList();
+    }
+    else if (nIDEvent == nIDEventDeleteFile)
+    {
+        deleteUselessFile();
+        KillTimer(m_nDeleteFileTimer);
     }
 	CDialogEx::OnTimer(nIDEvent);
 }
