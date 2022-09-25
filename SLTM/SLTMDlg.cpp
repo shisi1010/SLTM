@@ -988,6 +988,9 @@ UINT ThreadGetHotPicDataMutil(LPVOID lpParam)
 					int dev = 0;
 					cv::Point pMax;
 					float fmaxTemp;
+                    g_iFPS[dev]++;
+                    Mat tempmat(PIC_HEIGHT, PIC_WIDTH, CV_8UC3, a.struJpegWithAppendData.pJpegPicBuff);
+                    g_mPicData[dev] = tempmat;
 					pDlg->HandleTempFrame(g_fTempData[dev], pDlg->iCentroid[dev].pCentroid, pMax, fmaxTemp, dev);
 				}
 			}
@@ -1034,6 +1037,9 @@ UINT ThreadGetHotPicDataMutil2(LPVOID lpParam)
 					int dev = 1;
 					cv::Point pMax;
 					float fmaxTemp;
+                    g_iFPS[dev]++;
+                    Mat tempmat(PIC_HEIGHT, PIC_WIDTH, CV_8UC3, a.struJpegWithAppendData.pJpegPicBuff);
+                    g_mPicData[dev] = tempmat;
 					pDlg->HandleTempFrame(g_fTempData[dev], pDlg->iCentroid[dev].pCentroid, pMax, fmaxTemp, dev);
 				}
 
@@ -1082,6 +1088,9 @@ UINT ThreadGetHotPicDataMutil3(LPVOID lpParam)
 					int dev = 2;
 					cv::Point pMax;
 					float fmaxTemp;
+                    g_iFPS[dev]++;
+                    Mat tempmat(PIC_HEIGHT, PIC_WIDTH, CV_8UC3, a.struJpegWithAppendData.pJpegPicBuff);
+                    g_mPicData[dev] = tempmat;
 					pDlg->HandleTempFrame(g_fTempData[dev], pDlg->iCentroid[dev].pCentroid, pMax, fmaxTemp, dev);
 				}
 				
