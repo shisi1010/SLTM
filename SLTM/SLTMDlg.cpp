@@ -46,15 +46,6 @@ int g_BaohaoKey;
 //新文件名称，判断文件是否需要删除用
 CString g_NowFileFath;
 
-struct NumberTime
-{
-	int g_BaohaoList[10];
-	LONG g_BoahaoTimeList[10];
-	int BaohaoKey = 0;
-};
-
-NumberTime PositionList[3];
-
 std::map<CString, CString>g_mapPositionName = {
 	{"1", "1号LF精炼位"}, {"2","1号炉钢包"}, {"3","2号炉钢包"}, {"4","1号RH精炼位"},
 	{"5", "2号LF精炼位"}, {"6","3号炉钢包"}, {"7","4号炉钢包"}, {"8","2号RH精炼位"},
@@ -70,9 +61,14 @@ struct JudgeBOOL
 	bool iJudge[3][5];
 };
 
+//Threshold devThreshold[10] = {
+//	{5000,15000,3000},{10000,10000,10000},{10000,8000,3000},{12000,10000,10000},{10000,10000,3000},
+//	{4000,8000,3000},{4000,8000,3000},{10000,10000,10000},{4000,8000,3000},{4000,8000,3000},
+//};
+
 Threshold devThreshold[10] = {
-	{5000,15000,3000},{10000,10000,10000},{10000,8000,3000},{12000,10000,10000},{10000,10000,3000},
-	{4000,8000,3000},{4000,8000,3000},{10000,10000,10000},{4000,8000,3000},{4000,8000,3000},
+    {5000,5000,3000},{5000,5000,3000},{5000,5000,3000},{5000,5000,3000},{5000,5000,3000},
+    {3000,3000,3000},{3000,5000,3000},{5000,5000,3000},{3000,3000,3000},{3000,3000,3000},
 };
 
 
@@ -83,17 +79,30 @@ Threshold devThreshold[10] = {
 && (fRightMeanValue < 20 || bJudgeCon[3])
 && (fLeftMeanValue < 20 || bJudgeCon[4]))
 */
+//JudgeBOOL devJudgeBool[10] = {
+//	{0,0,1,1,1,0,0,1,1,1,0,1,1,1,1}, // pos1 LF1
+//	{0,0,0,1,1,0,0,0,1,1,0,0,0,1,1}, // pos2 钢包1
+//	{0,0,0,0,1,0,0,1,1,1,0,0,1,1,1}, // pos3 钢包2
+//	{0,0,0,0,0,0,0,0,1,1,0,0,1,1,1}, // pos4 RH1
+//	{0,0,0,1,1,0,0,0,0,1,0,0,1,1,1}, // pos5 LF2
+//	{0,0,0,1,1,0,0,0,1,1,0,0,1,1,1}, // pos6 钢包3
+//	{0,0,0,1,1,0,0,0,1,1,0,0,1,1,1}, // pos7 钢包4
+//	{0,0,0,0,0,0,0,0,0,0,0,0,1,1,1}, // pos8 RH2
+//	{0,0,1,1,1,0,0,0,1,0,0,0,1,1,1}, // pos9 铁包1
+//	{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}  // pos10 铁包2
+//};
+
 JudgeBOOL devJudgeBool[10] = {
-	{0,0,1,1,1,0,0,0,0,0,0,0,1,1,1}, // pos1 LF1
-	{0,0,0,1,1,0,0,0,1,1,0,0,0,1,1}, // pos2 钢包1
-	{0,0,0,0,1,0,0,1,1,1,0,0,1,1,1}, // pos3 钢包2
-	{0,0,0,0,0,0,0,0,1,1,0,0,1,1,1}, // pos4 RH1
-	{0,0,0,1,1,0,0,0,0,1,0,0,1,1,1}, // pos5 LF2
-	{0,0,0,1,1,0,0,0,1,1,0,0,1,1,1}, // pos6 钢包3
-	{0,0,0,1,1,0,0,0,1,1,0,0,1,1,1}, // pos7 钢包4
-	{0,0,0,0,0,0,0,0,0,0,0,0,1,1,1}, // pos8 RH2
-	{0,0,1,1,1,0,0,0,1,0,0,0,1,1,1}, // pos9 铁包1
-	{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}  // pos10 铁包2
+   {0,1,1,1,1,0,1,1,1,1,0,1,1,1,1}, // pos1 LF1
+   {0,1,1,1,1,0,1,1,1,1,0,1,1,1,1}, // pos2 钢包1
+   {0,1,1,1,1,0,1,1,1,1,0,1,1,1,1}, // pos3 钢包2
+   {0,1,1,1,1,0,1,1,1,1,0,1,1,1,1}, // pos4 RH1
+   {0,1,1,1,1,0,1,1,1,1,0,1,1,1,1}, // pos5 LF2
+   {0,1,1,1,1,0,1,1,1,1,0,1,1,1,1}, // pos6 钢包3
+   {0,1,1,1,1,0,1,1,1,1,0,1,1,1,1}, // pos7 钢包4
+   {0,1,1,1,1,0,1,1,1,1,0,1,1,1,1}, // pos8 RH2
+   {0,1,1,1,1,0,1,1,1,1,0,1,1,1,1}, // pos9 铁包1
+   {0,1,1,1,1,0,1,1,1,1,0,1,1,1,1}, // pos10 铁包2
 };
 
 
@@ -212,7 +221,6 @@ BOOL CSLTMDlg::OnInitDialog()
 
     GetTimeList();
     SetTimer(nIDEventGetTimeList, 20000, 0);
-
 	return TRUE;  // 除非将焦点设置到控件，否则返回 TRUE
 }
 
@@ -989,7 +997,7 @@ UINT ThreadGetHotPicDataMutil(LPVOID lpParam)
 					cv::Point pMax;
 					float fmaxTemp;
                     g_iFPS[dev]++;
-                    Mat tempmat(PIC_HEIGHT, PIC_WIDTH, CV_8UC3, a.struJpegWithAppendData.pJpegPicBuff);
+                    Mat tempmat(a.struJpegWithAppendData.dwJpegPicHeight, a.struJpegWithAppendData.dwJpegPicWidth, CV_8UC3, a.struJpegWithAppendData.pJpegPicBuff);
                     g_mPicData[dev] = tempmat;
 					pDlg->HandleTempFrame(g_fTempData[dev], pDlg->iCentroid[dev].pCentroid, pMax, fmaxTemp, dev);
 				}
@@ -1038,7 +1046,7 @@ UINT ThreadGetHotPicDataMutil2(LPVOID lpParam)
 					cv::Point pMax;
 					float fmaxTemp;
                     g_iFPS[dev]++;
-                    Mat tempmat(PIC_HEIGHT, PIC_WIDTH, CV_8UC3, a.struJpegWithAppendData.pJpegPicBuff);
+                    Mat tempmat(a.struJpegWithAppendData.dwJpegPicHeight, a.struJpegWithAppendData.dwJpegPicWidth, CV_8UC3, a.struJpegWithAppendData.pJpegPicBuff);
                     g_mPicData[dev] = tempmat;
 					pDlg->HandleTempFrame(g_fTempData[dev], pDlg->iCentroid[dev].pCentroid, pMax, fmaxTemp, dev);
 				}
@@ -1089,7 +1097,7 @@ UINT ThreadGetHotPicDataMutil3(LPVOID lpParam)
 					cv::Point pMax;
 					float fmaxTemp;
                     g_iFPS[dev]++;
-                    Mat tempmat(PIC_HEIGHT, PIC_WIDTH, CV_8UC3, a.struJpegWithAppendData.pJpegPicBuff);
+                    Mat tempmat(a.struJpegWithAppendData.dwJpegPicHeight, a.struJpegWithAppendData.dwJpegPicWidth, CV_8UC3, a.struJpegWithAppendData.pJpegPicBuff);
                     g_mPicData[dev] = tempmat;
 					pDlg->HandleTempFrame(g_fTempData[dev], pDlg->iCentroid[dev].pCentroid, pMax, fmaxTemp, dev);
 				}
@@ -1354,10 +1362,14 @@ void CSLTMDlg::GetTimeList()
             CString m_showstr;
             m_showstr = m_showTime.Format("%Y-%m-%d %H:%M:%S");
 
+            CTimeSpan span = CTime::GetCurrentTime() - m_showTime;
+
             CString m_shownum;
             m_shownum.Format("%d", g_BaohaoList[0]);
 
-            m_showstr = m_showstr +"   包号为：" + m_shownum;
+            m_showstr = m_showstr + "   包号为：" + m_shownum;
+
+            (span.GetTotalMinutes() > 45) ? m_showstr = "": m_showstr;
             GetDlgItem(IDC_STATIC_TIMELIST)->SetWindowText(m_showstr);
         }
     }
@@ -1385,25 +1397,24 @@ void CSLTMDlg::MoveFileAndRename(int pos)
 	t = g_tGetFileTime[pos];
 
 	//读取包号时间列表
-	//for (int k = 0; k < PositionList[pos].BaohaoKey; k++)
-	//{
-	//	CTime tm = g_BoahaoTimeList[k];
+	for (int k = 0; k < g_BaohaoKey; k++)
+	{
+		CTime tm = g_BoahaoTimeList[k];
 
-	//	CTimeSpan span = t - tm;
-	//	LONG spanP = span.GetTotalSeconds();
+		CTimeSpan span = t - tm;
+		LONG spanP = span.GetTotalSeconds();
 
-	//	if (abs(spanP) < 1200000) //包号和正面图片时间在90s内
-	//	{
-	//		m_IsNumberMatchTime = k;
-	//	}
-	//}
-    CTime tm = g_BoahaoTimeList[0];
-    CTimeSpan span = t - tm;
-    LONG spanP = span.GetTotalSeconds();
-    m_IsNumberMatchTime = 0;
-    CString csShow;
-    csShow.Format("时间差 %ld秒", spanP);
-    m_StaticLog = csShow;
+		if (abs(spanP) < 1200000) //包号和正面图片时间在90s内
+		{
+            //CString csShow;
+            //csShow.Format("时间差 %ld秒", spanP);
+            //m_StaticLog = csShow;
+			m_IsNumberMatchTime = k;
+            break;
+		}
+	}
+
+
     //GetDlgItem(IDC_STATIC_LOG)->SetWindowText(csShow);
 
 	CString m_tempPath;
@@ -1457,7 +1468,8 @@ void CSLTMDlg::MoveFileAndRename(int pos)
 	{
 		CopyFile(m_oldFilePath, m_tempPath, FALSE);
 		g_NowFileFath = m_newFileName;
-		m_nDeleteFileTimer = SetTimer(nIDEventDeleteFile, 20000, 0);
+        KillTimer(nIDEventDeleteFile);
+		SetTimer(nIDEventDeleteFile, 180000, 0);
 	}
 }
 
@@ -1569,7 +1581,7 @@ void CSLTMDlg::CheackFileMove(__time64_t tName, int dev)
 }
 
 // Threshold-阈值 Centroid-质心
-#define TempThreshold 110.0 //温度阈值
+#define TempThreshold 90.0 //温度阈值
 #define PointThreshold 5000 //高温点阈值
 
 static inline bool ContoursSortFun(vector<cv::Point> contour1, vector<cv::Point> contour2)
@@ -1598,7 +1610,10 @@ void CSLTMDlg::HandleTempFrame(float* tempMatrix, Point &pCentroid, Point &pMaxT
 	Mat imgBinarization = Mat(PIC_HEIGHT, PIC_WIDTH, CV_8UC1);
 
 	float	fTempThreshold	= TempThreshold; //温度阈值
-
+    if (g_devPosition == "2" || g_devPosition == "9") // 老的设备 1号转炉1号铁包
+    {
+        fTempThreshold = 50.0;
+    }
 	int		iThreshold	= g_mapPointThreshold[g_devPosition].iThreshold[dev]; // 个性化该位置该画面的温度点阈值
 
 	int		iPointSum	= 0; //高温点总计
@@ -2171,7 +2186,7 @@ void CSLTMDlg::OnTimer(UINT_PTR nIDEvent)
     else if (nIDEvent == nIDEventDeleteFile)
     {
         deleteUselessFile();
-        KillTimer(m_nDeleteFileTimer);
+        KillTimer(nIDEventDeleteFile);
     }
 	CDialogEx::OnTimer(nIDEvent);
 }
