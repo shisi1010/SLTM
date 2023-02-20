@@ -67,7 +67,7 @@ struct JudgeBOOL
 //};
 
 Threshold devThreshold[10] = {
-    {5000,5000,3000},{5000,5000,3000},{10000,5000,3000},{10000,5000,3000},{5000,5000,3000},
+    {5000,5000,3000},{5000,5000,3000},{5000,5000,3000},{10000,5000,3000},{5000,5000,3000},
     {3000,3000,3000},{3000,5000,3000},{5000,5000,3000},{3000,3000,3000},{3000,3000,3000},
 };
 
@@ -1832,31 +1832,39 @@ void CSLTMDlg::BmpData2Gui2(unsigned char* pBits, int width, int height)
 
 void CSLTMDlg::BmpData2Gui(unsigned char* pBits, int width, int height, int position)
 {
-	if (mapStaticPosition[position]->GetSafeHwnd())
-	{
-		g_iFPS[position] ++;
-		CClientDC dc(mapStaticPosition[position]);
-		RECT rect;
-		SetStretchBltMode(dc.GetSafeHdc(), STRETCH_HALFTONE);
-		mapStaticPosition[position]->GetClientRect(&rect);
+    if (mapStaticPosition[position]->GetSafeHwnd())
+    {
+        g_iFPS[position] ++;
+        CClientDC dc(mapStaticPosition[position]);
+        RECT rect;
+        SetStretchBltMode(dc.GetSafeHdc(), STRETCH_HALFTONE);
+        mapStaticPosition[position]->GetClientRect(&rect);
 
-		Mat matBmp(height, width, CV_8UC3, pBits);
-		g_mPicData[position] = matBmp;
-		if (iCentroid[position].iCentroidExist)
-		{
-			cv::circle(matBmp, iCentroid[position].pCentroid, 8, Scalar(0, 255, 0), 2);
-            cv::circle(matBmp, iCentroid[position].pMaxTemp, 2, Scalar(0, 255, 255), 1);
+        Mat matBmp(height, width, CV_8UC3, pBits);
+        g_mPicData[position] = matBmp;
+        if (iCentroid[position].iCentroidExist)
+        {
+            // cv::circle(matBmp, iCentroid[position].pCentroid, 3, Scalar(0, 255, 0), 2);
+            cv::circle(matBmp, iCentroid[position].pMaxTemp, 2, Scalar(255, 255, 0), 2);
 
             string sMaxTemp;
-            sMaxTemp = to_string(iCentroid[position].fMaxtemp);
+#ifdef HKWS
+            float maxtmepf = iCentroid[position].fMaxtemp;
+#else
+            float maxtmepf = (iCentroid[position].fMaxtemp > 200.0) ? iCentroid[position].fMaxtemp : (200 - iCentroid[position].fMaxtemp) * 0.25 + 200;
+#endif
+            sMaxTemp = to_string(maxtmepf);
             sMaxTemp = sMaxTemp.substr(0, sMaxTemp.find(".") + 3);
-            cv::putText(matBmp, sMaxTemp, iCentroid[position].pMaxTemp, cv::FONT_HERSHEY_PLAIN, 1, Scalar(0, 255, 255),1);
-		}
 
-		CImage ciBmp;
-		MatToCImage(matBmp, ciBmp);
-		ciBmp.Draw(dc.GetSafeHdc(), rect);
-	}
+            cv::putText(matBmp, sMaxTemp, cv::Point(0, 254), cv::FONT_HERSHEY_PLAIN, 1, Scalar(255, 255, 0), 2);
+            //cv::rectangle(matBmp, cv::Rect(iCentroid[position].pMaxTemp.x, iCentroid[position].pMaxTemp.y,3,3), Scalar(255, 255, 0), 2);
+            //cv::putText(matBmp, sMaxTemp, iCentroid[position].pMaxTemp, cv::FONT_HERSHEY_PLAIN, 1, Scalar(255, 255, 0), 2);
+        }
+
+        CImage ciBmp;
+        MatToCImage(matBmp, ciBmp);
+        ciBmp.Draw(dc.GetSafeHdc(), rect);
+    }
 }
 
 
