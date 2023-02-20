@@ -9,4 +9,7 @@ class CCentroid
 public:
 	int iCentroidExist = 0;
 	cv::Point pCentroid = { 0, 0 };
+
+    float fMaxtemp= 0.0;
+    cv::Point pMaxTemp = { 0, 0 };
 };

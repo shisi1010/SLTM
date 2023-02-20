@@ -84,6 +84,13 @@ protected:
 	
 public:
 
+    CString m_oldFileNameA = "";
+    CString m_oldFileNameB = "";
+    CString m_oldFileNameC = "";
+
+    CString m_baohaoA = "";
+    CString m_baohaoB = "";
+    CString m_baohaoC = "";
 
 	CCentroid iCentroid[3];
 	CString g_csDeviceIP[DEV_NUM];
@@ -154,7 +161,9 @@ public:
 	CBrush m_brushBack;
 
     void GetTimeList();
-	void WriteTempDataFile(int n);
+
+    void cmptime(CTime t_local, CString csCmp, CString &m_oldFileName, CString &m_newFileName);
+    void WriteTempDataFile(int n);
 	void CheackFileMove(__time64_t tName, int dev);
 	void MoveFileAndRename(int pos);
 	void deleteUselessFile();

@@ -67,7 +67,7 @@ struct JudgeBOOL
 //};
 
 Threshold devThreshold[10] = {
-    {5000,5000,3000},{5000,5000,3000},{5000,5000,3000},{5000,5000,3000},{5000,5000,3000},
+    {5000,5000,3000},{5000,5000,3000},{10000,5000,3000},{10000,5000,3000},{5000,5000,3000},
     {3000,3000,3000},{3000,5000,3000},{5000,5000,3000},{3000,3000,3000},{3000,3000,3000},
 };
 
@@ -1326,7 +1326,8 @@ void CSLTMDlg::GetTimeList()
 #ifdef LOCAL_TEST
     string url = "127.0.0.1:8000/assets/timelist/?location=" + g_mapPositionNameForHTTP[g_devPosition];
 #else
-    string url = "192.168.1.200:8000/homepage/timelist/?location=" + g_mapPositionNameForHTTP[g_devPosition];
+    //string url = "192.168.1.200:8000/homepage/timelist/?location=" + g_mapPositionNameForHTTP[g_devPosition];
+    string url = "192.168.1.200:8000/homepage/timecheck/?location=" + g_mapPositionNameForHTTP[g_devPosition];
 #endif
     
     auto resp = requests::get(url.c_str());
@@ -1388,12 +1389,34 @@ std::string writeJson(string baoNumber, string baoArea, string baoTime)
     out = root.dump();
     return out;
 }
+
+void CSLTMDlg::cmptime(CTime t_local, CString csCmp, CString &m_oldFileName, CString &m_newFileName)
+{
+    if (csCmp != "")
+    {
+        long timeB = atol(csCmp.GetBuffer(0));
+        csCmp.ReleaseBuffer();
+        time_t tTime = t_local.GetTime();
+        long lTime = (long)tTime;
+        if (timeB != lTime && abs(lTime - timeB) <= 180)
+        {
+            m_oldFileName = csCmp;
+
+            time_t ttimeB = (time_t)timeB;
+            CTime cTImeB(ttimeB);
+
+            m_newFileName = cTImeB.Format("%Y%m%d-%H%M%S");
+        }
+    }
+}
+
+
 void CSLTMDlg::MoveFileAndRename(int pos)
 {
 	int m_IsNumberMatchTime = -1; //判断条件
 
 	//获取正在处理的数据名（即时间）
-	CTime t;
+	CTime t, t_local;
 	t = g_tGetFileTime[pos];
 
 	//读取包号时间列表
@@ -1404,7 +1427,7 @@ void CSLTMDlg::MoveFileAndRename(int pos)
 		CTimeSpan span = t - tm;
 		LONG spanP = span.GetTotalSeconds();
 
-		if (abs(spanP) < 1200000) //包号和正面图片时间在90s内
+		if (abs(spanP) < 180) //包号和正面图片时间在90s内
 		{
             //CString csShow;
             //csShow.Format("时间差 %ld秒", spanP);
@@ -1439,14 +1462,36 @@ void CSLTMDlg::MoveFileAndRename(int pos)
 			m_baohaoPath.Format(_T("%d"), g_BaohaoList[m_IsNumberMatchTime]);
 		}
 		CTime m_fileTime = g_BoahaoTimeList[m_IsNumberMatchTime];
-
+        t_local = m_fileTime;
 		m_newFileName = m_fileTime.Format("%Y%m%d-%H%M%S");
 	}
 	else
 	{
 		m_baohaoPath = "00";
 		m_newFileName = t.Format("%Y%m%d-%H%M%S");
+        t_local = t;
 	}
+
+    // 20230220 添加逻辑判断 相近时间打为一包
+
+    switch (pos)
+    {
+    case 0:
+        cmptime(t_local, m_oldFileNameB, m_oldFileNameA, m_newFileName);
+        cmptime(t_local, m_oldFileNameC, m_oldFileNameA, m_newFileName);
+        break;
+    case 1:
+        cmptime(t_local, m_oldFileNameA, m_oldFileNameB, m_newFileName);
+        cmptime(t_local, m_oldFileNameC, m_oldFileNameB, m_newFileName);
+        break;
+    case 2:
+        cmptime(t_local, m_oldFileNameB, m_oldFileNameC, m_newFileName);
+        cmptime(t_local, m_oldFileNameA, m_oldFileNameC, m_newFileName);
+        break;
+    default:
+        break;
+    }
+
 
 	//确认新文件名
 	if (pos == 0)
@@ -1464,13 +1509,12 @@ void CSLTMDlg::MoveFileAndRename(int pos)
 
 	m_tempPath = END_FILE_PATH + g_devPosition + "\\" + m_newFileName;
 
-	//if (m_IsNumberMatchTime != -1)
-	{
-		CopyFile(m_oldFilePath, m_tempPath, FALSE);
-		g_NowFileFath = m_newFileName;
-        KillTimer(nIDEventDeleteFile);
-		SetTimer(nIDEventDeleteFile, 180000, 0);
-	}
+
+    CopyFile(m_oldFilePath, m_tempPath, FALSE);
+    g_NowFileFath = m_newFileName;
+    KillTimer(nIDEventDeleteFile);
+    SetTimer(nIDEventDeleteFile, 180000, 0);
+	
 }
 
 void CSLTMDlg::deleteUselessFile()
@@ -1560,6 +1604,10 @@ void CSLTMDlg::deleteUselessFile()
 		string jsonStr = writeJson(s_baohao, s_localpos, s_time);
         string url = "192.168.1.200:8000/homepage/report/?location=" + s_localpos;
 		auto resp = requests::post(url.c_str(), jsonStr);
+        if (resp != NULL)
+        {
+            string returnStr = "success";
+        }
         resp.reset();
 	}
 }
@@ -1797,6 +1845,12 @@ void CSLTMDlg::BmpData2Gui(unsigned char* pBits, int width, int height, int posi
 		if (iCentroid[position].iCentroidExist)
 		{
 			cv::circle(matBmp, iCentroid[position].pCentroid, 8, Scalar(0, 255, 0), 2);
+            cv::circle(matBmp, iCentroid[position].pMaxTemp, 2, Scalar(0, 255, 255), 1);
+
+            string sMaxTemp;
+            sMaxTemp = to_string(iCentroid[position].fMaxtemp);
+            sMaxTemp = sMaxTemp.substr(0, sMaxTemp.find(".") + 3);
+            cv::putText(matBmp, sMaxTemp, iCentroid[position].pMaxTemp, cv::FONT_HERSHEY_PLAIN, 1, Scalar(0, 255, 255),1);
 		}
 
 		CImage ciBmp;
@@ -1872,7 +1926,7 @@ void CSLTMDlg::DataTransfer(unsigned char* pBGR, int bgrLen, float* tempMatrix, 
 		cv::Point pMax;
 		float fmaxTemp;
 		//GetCentroid(tempMatrix, iCentroid[dev].pCentroid, pMax, dev);
-		HandleTempFrame(tempMatrix, iCentroid[dev].pCentroid, pMax, fmaxTemp, dev);
+		HandleTempFrame(tempMatrix, iCentroid[dev].pCentroid, iCentroid[dev].pMaxTemp, iCentroid[dev].fMaxtemp, dev);
 		if (iCentroid[dev].pCentroid != cv::Point(-1, -1))
 		{
 			iCentroid[dev].iCentroidExist = 1;
@@ -1908,6 +1962,7 @@ UINT SendJsonMessage(LPVOID pParam)
     if (resp!= NULL)
     {
         string returnStr = "success";
+        OutputDebugString(returnStr.c_str());
         string retStr = UtfToGbk(resp->body.c_str());
     }
 
