@@ -83,14 +83,18 @@ protected:
 	DECLARE_MESSAGE_MAP()
 	
 public:
+    struct threadInfo
+    {
+        int bao_number;
+        long time_long;
+    };
+    threadInfo info;
+    CString m_file_path;
+    string m_baohao;
 
     CString m_oldFileNameA = "";
     CString m_oldFileNameB = "";
     CString m_oldFileNameC = "";
-
-    CString m_baohaoA = "";
-    CString m_baohaoB = "";
-    CString m_baohaoC = "";
 
 	CCentroid iCentroid[3];
 	CString g_csDeviceIP[DEV_NUM];
@@ -151,7 +155,7 @@ public:
 	void SetInfraredData(char *str);
 	//bool GetCentroid(float* tempMatrix, Point &pCentroid, Point &pMaxTempPoint);
 
-	bool GetCentroid(float* tempMatrix, Point &pCentroid, Point &pMaxTempPoint, int dev);
+	//bool GetCentroid(float* tempMatrix, Point &pCentroid, Point &pMaxTempPoint, int dev);
 	void BmpData2Gui0(unsigned char* pBits, int width, int height);
 	void BmpData2Gui1(unsigned char* pBits, int width, int height);
 	void BmpData2Gui2(unsigned char* pBits, int width, int height);
@@ -178,5 +182,6 @@ public:
 	UINT_PTR nIDEventDeleteFile = 6;
     UINT_PTR nIDEventGetTimeList = 7;
 	virtual BOOL PreTranslateMessage(MSG* pMsg);
+    void CaptureTemp(CString file_path, string baohao);
 };
 

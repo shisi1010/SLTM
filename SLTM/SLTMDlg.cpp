@@ -27,9 +27,12 @@
 #ifdef LOCAL_TEST
 #define WRITE_FILE_PATH _T("\\\\127.0.0.1\\Share\\savetemp\\")
 #define END_FILE_PATH _T("\\\\127.0.0.1\\Share\\data\\")
+#define CAPTURE_FILE_PATH _T("\\\\127.0.0.1\\Share\\capture\\");
 #else
 #define WRITE_FILE_PATH _T("\\\\192.168.1.200\\Share\\savetemp\\")
 #define END_FILE_PATH _T("\\\\192.168.1.200\\Share\\data\\")
+#define CAPTURE_FILE_PATH _T("\\\\192.168.1.200\\Share\\capture\\");
+
 #endif
 // CSLTMDlg 对话框
 
@@ -67,7 +70,7 @@ struct JudgeBOOL
 //};
 
 Threshold devThreshold[10] = {
-    {5000,5000,3000},{5000,5000,3000},{5000,5000,3000},{10000,5000,3000},{5000,5000,3000},
+    {5000,5000,3000},{5000,5000,3000},{5000,5000,3000},{5000,5000,3000},{5000,5000,3000},
     {3000,3000,3000},{3000,5000,3000},{5000,5000,3000},{3000,3000,3000},{3000,3000,3000},
 };
 
@@ -121,6 +124,9 @@ CString g_devPosition;
 
 int g_iFPS[3] = { 0, 0, 0 };
 int g_showFPS[3] = { 0, 0, 0 };
+
+int g_temp_frame_fps[3] = { 0, 0, 0 };
+
 __time64_t g_tGetFileTime[3] = { 0, 0, 0 };
 
 CString g_devTitleName;
@@ -220,7 +226,7 @@ BOOL CSLTMDlg::OnInitDialog()
 #endif
 
     GetTimeList();
-    SetTimer(nIDEventGetTimeList, 20000, 0);
+    SetTimer(nIDEventGetTimeList, 1000, 0);
 	return TRUE;  // 除非将焦点设置到控件，否则返回 TRUE
 }
 
@@ -370,7 +376,7 @@ void CSLTMDlg::WriteTempDataFile(int n)
 
 	imwrite(s_path, g_mPicData[n]);
 	SaveSingleTemp(g_fTempData[n], TempFileName);
-	CheackFileMove(tm.GetTime(), n);
+	//CheackFileMove(tm.GetTime(), n);
 	return;
 }
 
@@ -1427,7 +1433,7 @@ void CSLTMDlg::MoveFileAndRename(int pos)
 		CTimeSpan span = t - tm;
 		LONG spanP = span.GetTotalSeconds();
 
-		if (abs(spanP) < 180) //包号和正面图片时间在90s内
+		if (abs(spanP) < 300) //包号和正面图片时间在90s内
 		{
             //CString csShow;
             //csShow.Format("时间差 %ld秒", spanP);
@@ -1629,7 +1635,7 @@ void CSLTMDlg::CheackFileMove(__time64_t tName, int dev)
 }
 
 // Threshold-阈值 Centroid-质心
-#define TempThreshold 90.0 //温度阈值
+#define TempThreshold 50.0 //温度阈值
 #define PointThreshold 5000 //高温点阈值
 
 static inline bool ContoursSortFun(vector<cv::Point> contour1, vector<cv::Point> contour2)
@@ -1752,8 +1758,14 @@ void CSLTMDlg::HandleTempFrame(float* tempMatrix, Point &pCentroid, Point &pMaxT
 		// 图像截取条件
 		// 中心区域是否被覆盖
 		Rect rTopRect = Rect(162, 67, 60, 20);
-		Rect rMiddleRect = Rect(162, 134, 60, 20);
-		Rect rBottomRect = Rect(162, 201, 60, 20);
+        Rect rMiddleRect;
+        rMiddleRect = Rect(162, 134, 60, 20);
+		if (g_devPosition == "6" && dev == 1)
+		{
+            rMiddleRect = Rect(50, 134, 60, 20);
+		}
+        
+        Rect rBottomRect = Rect(162, 201, 60, 20);
 		Rect rRightRect = Rect(320, 60, 20, 150);
 		Rect rLeftRect = Rect(32, 60, 20, 150);
 		Scalar MiddleValue = mean(imgBinarization(rMiddleRect));
@@ -1773,8 +1785,8 @@ void CSLTMDlg::HandleTempFrame(float* tempMatrix, Point &pCentroid, Point &pMaxT
 
 		bool* bJudgeCon = g_mapSaveJudge[g_devPosition].iJudge[dev];
 
-		// 个性化图像存储条件 时差1分钟防止重复
-		if (tspan > 60 
+		// 个性化图像存储条件 时差10分钟防止重复
+		if (tspan > 600 
 			&& (fMiddleMeanValue > 200 || bJudgeCon[0])
 			&& (fTopValue > 100 || bJudgeCon[1])
 			&& (fBottomMeanValue > 100 || bJudgeCon[2])
@@ -1793,41 +1805,6 @@ void CSLTMDlg::HandleTempFrame(float* tempMatrix, Point &pCentroid, Point &pMaxT
 		return;
 	}
 }
-
-
-// old BMP to GUI function
-/* 
-void CSLTMDlg::BmpData2Gui2(unsigned char* pBits, int width, int height)
-{
-	//fps[2] ++;
-	if (this->GetSafeHwnd())
-	{
-		g_iFPS[2] ++;
-		BITMAPINFO       dibInfo;
-		// 组装位图信息头
-		dibInfo.bmiHeader.biSize = sizeof(BITMAPINFO);
-		dibInfo.bmiHeader.biWidth = width;
-		dibInfo.bmiHeader.biHeight = -height;
-		dibInfo.bmiHeader.biPlanes = 1;
-		dibInfo.bmiHeader.biBitCount = 24;
-		dibInfo.bmiHeader.biCompression = 0;
-		dibInfo.bmiHeader.biSizeImage = width * height * 3;
-		dibInfo.bmiHeader.biXPelsPerMeter = 0x0ec4;
-		dibInfo.bmiHeader.biYPelsPerMeter = 0x0ec4;
-		dibInfo.bmiHeader.biClrUsed = 0;
-		dibInfo.bmiHeader.biClrImportant = 0;
-
-		CClientDC dc(&m_staticImage3);
-
-		SetStretchBltMode(dc.GetSafeHdc(), STRETCH_HALFTONE);
-
-		RECT rect;
-		m_staticImage3.GetClientRect(&rect);
-
-		int nResult = StretchDIBits(dc.GetSafeHdc(), 0, 0, rect.right - rect.left, rect.bottom - rect.top, 0, 0, width, height, pBits, &dibInfo, DIB_RGB_COLORS, SRCCOPY);
-	}
-}
-*/
 
 
 void CSLTMDlg::BmpData2Gui(unsigned char* pBits, int width, int height, int position)
@@ -1923,9 +1900,6 @@ void CSLTMDlg::BmpData2Gui2(unsigned char* pBits, int width, int height)
 	}
 }
 
-
-
-
 void CSLTMDlg::DataTransfer(unsigned char* pBGR, int bgrLen, float* tempMatrix, int width, int height, int dev)
 {
 	if (width == PIC_WIDTH && height == PIC_HEIGHT)
@@ -1933,7 +1907,8 @@ void CSLTMDlg::DataTransfer(unsigned char* pBGR, int bgrLen, float* tempMatrix, 
 		memcpy(g_fTempData[dev], tempMatrix, width * height * sizeof(float));
 		cv::Point pMax;
 		float fmaxTemp;
-		//GetCentroid(tempMatrix, iCentroid[dev].pCentroid, pMax, dev);
+        //GetCentroid(tempMatrix, iCentroid[dev].pCentroid, pMax, dev);
+        g_temp_frame_fps[dev]++;
 		HandleTempFrame(tempMatrix, iCentroid[dev].pCentroid, iCentroid[dev].pMaxTemp, iCentroid[dev].fMaxtemp, dev);
 		if (iCentroid[dev].pCentroid != cv::Point(-1, -1))
 		{
@@ -1978,6 +1953,161 @@ UINT SendJsonMessage(LPVOID pParam)
 	return 0;
 }
 
+std::string GetNumberCheck()
+{
+#ifdef LOCAL_TEST
+    string url = "127.0.0.1:8000/assets/numbercheck/?location=" + g_mapPositionNameForHTTP[g_devPosition];
+#else
+    //string url = "192.168.1.200:8000/homepage/timelist/?location=" + g_mapPositionNameForHTTP[g_devPosition];
+    string url = "192.168.1.200:8000/homepage/numbercheck/?location=" + g_mapPositionNameForHTTP[g_devPosition];
+#endif
+
+    auto resp = requests::get(url.c_str());
+    if (resp != NULL)
+    {
+        int statuscode = resp->status_code;
+        if (statuscode == 200)
+        {
+            string requestJson = resp->body.c_str();
+            hv::Json root;
+            root = hv::Json::parse(requestJson);
+
+            string tempstr = root["timelist"][0]["number"];
+            return tempstr;
+        }
+
+    }
+}
+
+
+void MakeDir(CString folder_name)
+{
+    //检查文件夹是否存在
+    BOOL exists = GetFileAttributes(folder_name) != INVALID_FILE_ATTRIBUTES;
+
+    //如果不存在，创建文件夹
+    if (!exists)
+    {
+        BOOL result = CreateDirectory(folder_name, NULL);
+        if (result)
+        {
+            //cout << "文件夹创建成功" << endl;
+        }
+        else
+        {
+            //cout << "文件夹创建失败" << endl;
+        }
+    }
+    else
+    {
+        //cout << "文件夹已存在" << endl;
+    }
+}
+
+
+UINT UploadData(LPVOID lpParam)
+{
+    CSLTMDlg* pDlg = (CSLTMDlg*)lpParam;
+
+    int old_bao_number = pDlg->info.bao_number;
+    int time_long = pDlg->info.time_long;
+
+    // 延迟60秒
+    Sleep(60000);
+    //CTime tm = g_BoahaoTimeList[0];
+    int bao_number = g_BaohaoList[0];
+    CString m_oldFileName;
+    CString m_baohaoPath, m_oldBaohaoName;
+    CString m_timePath;
+    CString m_newFileName;
+
+    //判断需转移的文件名
+    CString folder_path = CAPTURE_FILE_PATH;
+    m_baohaoPath = CString(GetNumberCheck().c_str());
+    //bao_number < 10 ? m_baohaoPath.Format(_T("0%d"), bao_number) : m_baohaoPath.Format(_T("%d"), bao_number);
+    old_bao_number < 10 ? m_oldBaohaoName.Format(_T("0%d"), old_bao_number) : m_oldBaohaoName.Format(_T("%d"), old_bao_number);
+
+    CTime m_fileTime = time_long;
+    m_timePath = m_fileTime.Format("%Y%m%d-%H%M%S");
+
+    char suffix[3] = { 'A','B','C' };
+
+    for (int i = 0; i < 3; i++)
+    {
+        //old \\\\192.168.1.200\\Share\\capture\\local\\timelist\\number-pos.tmp
+        m_oldFileName.Format("%s%s\\%ld\\%s-%d.tmp", folder_path, g_devPosition, time_long, m_oldBaohaoName, i);
+        //new \\\\192.168.1.200\\Share\\data\\local\\number-timelist-pos.tmp
+        m_newFileName.Format("%s%s\\%s-%s-%c.tmp", END_FILE_PATH, g_devPosition, m_baohaoPath, m_timePath, suffix[i]);
+
+        CString nf = m_newFileName;
+        CopyFile(m_oldFileName, m_newFileName, FALSE);
+    }
+
+    // 输出数据到数据后台
+    CString m_baohao, m_time;
+    m_baohao = m_baohaoPath;
+    m_time = m_timePath;
+    m_time.Replace("-", " ");
+    m_time.Insert(13, ":");
+    m_time.Insert(11, ":");
+    m_time.Insert(6, "-");
+    m_time.Insert(4, "-");
+
+    string s_baohao, s_time;
+    s_baohao = m_baohao.GetBuffer(0);
+    m_baohao.ReleaseBuffer();
+    s_time = m_time.GetBuffer(0);
+    m_time.ReleaseBuffer();
+    string s_localpos = g_mapPositionNameForHTTP[g_devPosition];
+    string jsonStr = writeJson(s_baohao, s_localpos, s_time);
+    string url = "192.168.1.200:8000/homepage/report/?location=" + s_localpos;
+    if (s_baohao != "99")
+    {
+        auto resp = requests::post(url.c_str(), jsonStr);
+        resp.reset();
+    }
+
+    return 0;
+}
+
+
+
+
+UINT CaptureAfterWait(LPVOID lpParam)
+{
+
+    CSLTMDlg* pDlg = (CSLTMDlg*)lpParam;
+    Sleep(5000);
+    CString file_path = pDlg->m_file_path;
+    string baohao = pDlg->m_baohao;
+    CString folder_name;
+    CTime tm; tm = CTime::GetCurrentTime();
+    folder_name.Format("%ld", tm.GetTime());
+    folder_name = file_path + folder_name;
+    MakeDir(folder_name);
+
+    CString baonumber = CString(baohao.c_str());
+    for (int i = 0; i < 3; i++)
+    {
+        CString str;
+        str.Format(_T("%d"), i);
+        CString TempFileName = folder_name + "\\" + baonumber + "-" + str + ".tmp";
+        CString PicFileName = folder_name + "\\" + baonumber + "-" + str + ".jpg";
+
+        string s_path((LPSTR)(LPCTSTR)PicFileName);
+
+        imwrite(s_path, g_mPicData[i]);
+        SaveSingleTemp(g_fTempData[i], TempFileName);
+    }
+    // 设置子线程 一段时间后执行
+
+    pDlg->info.bao_number = atol(baohao.c_str());
+    pDlg->info.time_long = tm.GetTime();
+
+    AfxBeginThread(UploadData, pDlg);
+}
+
+CTime tOld = CTime(2021, 10, 10, 10, 10, 10);
 UINT HTTPServerProc(LPVOID pParam)
 {
 	CSLTMDlg* pDlg = (CSLTMDlg*)pParam;
@@ -1995,7 +2125,7 @@ UINT HTTPServerProc(LPVOID pParam)
 	});
 
 	router.GET("/heartbeat", [pDlg](HttpRequest* req, HttpResponse* resp) {
-		CTime tNow = CTime::GetCurrentTime();
+        CTime tNow = CTime::GetCurrentTime();
 
 		__int64 iNow = tNow.GetTime();
 		int a = iNow % 10000;
@@ -2010,6 +2140,52 @@ UINT HTTPServerProc(LPVOID pParam)
 		return resp->String(sfpssend.c_str());
 	});
 
+    router.GET("/capture", [pDlg](HttpRequest* req, HttpResponse* resp) {
+        
+        CTime tNow = CTime::GetCurrentTime();
+        CTimeSpan span = tNow - tOld;
+        CString cstime;
+        cstime.Format("%ld", span.GetTotalSeconds());
+        OutputDebugString(cstime);
+
+        int delay_time;
+        // 1号转炉钢包 delay时间设置更长
+        //g_devPosition == "2" ? delay_time = 60 : 
+        delay_time = 20;
+
+        if (span.GetTotalSeconds() < delay_time) // 防止误触发
+        {
+            resp->json["args"] = "";
+            tOld = tNow;
+            return 200;
+        }
+        else
+        {
+            tOld = tNow;
+            resp->json["args"] = req->query_params;
+            hv::Json a = req->query_params;
+            string baohao = a["baohao"];
+            
+            CString folder_path = CAPTURE_FILE_PATH;
+            BOOL exists = GetFileAttributes(folder_path) != INVALID_FILE_ATTRIBUTES;
+            if (!exists)
+                MakeDir(folder_path);
+
+            folder_path = folder_path + g_devPosition + "\\";
+            MakeDir(folder_path);
+
+            if (g_devPosition == "2")
+            {
+                AfxBeginThread(CaptureAfterWait, pDlg);
+            }
+            else
+            {
+                pDlg->CaptureTemp(folder_path, baohao);
+            }
+            return 200;
+        }
+
+    });
 	server.port = 8765;
 	server.service = &router;
 	http_server_run(&server);
@@ -2028,116 +2204,6 @@ void CSLTMDlg::SetInfraredData(char *str)
 {
 	CString strOutput(str);
 	GetDlgItem(IDC_STATIC_LOG)->SetWindowText(strOutput);
-}
-
-
-/************************************************************************/
-/* 摄像头图像质心判断模块                                                 */
-/************************************************************************/
-bool CSLTMDlg::GetCentroid(float* tempMatrix, Point &pCentroid, Point &pMaxTempPoint, int dev)
-{
-	Mat tempDataMat(PIC_HEIGHT, PIC_WIDTH, CV_32FC1, tempMatrix);
-	Point centroid(-1, -1);			  // 质心初始化为(-1, -1)
-	
-	// 通过OpenCV自带函数求取最高温最低温位置与温度值
-	double minVal, maxVal;
-	int minIdx[2] = {}, maxIdx[2] = {};
-	cv::minMaxIdx(tempDataMat, &minVal, &maxVal, minIdx, maxIdx);
-	
-	Point point(maxIdx[1], maxIdx[0]);// 默认最高温位置
-
-	// 获取二值化图与统计高温点
-	Mat imgBinarization(PIC_HEIGHT, PIC_WIDTH, CV_8UC1);
-	int pointsum = 0;		// 高温点数目
-	int Xsum = 0, Ysum = 0; // XY坐标值总计
-	for (int i = 0; i < PIC_HEIGHT; i++)
-	{
-		for (int j = 0; j < PIC_WIDTH; j++)
-		{
-			if (tempDataMat.at<float>(i, j) > TempThreshold)
-			{
-				pointsum++;
-				imgBinarization.at<uchar>(i, j) = 255;
-				Xsum += j;
-				Ysum += i;
-			}
-			else
-			{
-				imgBinarization.at<uchar>(i, j) = 0;
-			}
-		}
-	}
-
-	// 阈值判断 小于点数阈值不再继续
-	if (pointsum > PointThreshold)
-	{
-		
-		Mat dst(PIC_HEIGHT, PIC_WIDTH, CV_8UC1);
-
-		//对图像进行开操作，排除干扰点
-		Mat kernel = getStructuringElement(MORPH_RECT, Size(5, 5));
-		morphologyEx(imgBinarization, dst, 2, kernel);
-
-		// 新方法，使用OpenCV findContours查找轮廓        
-		vector<vector<cv::Point>> contours;
-		vector<Vec4i> hierarchy;
-                         
-
-		findContours(dst, contours, hierarchy, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_SIMPLE);
-
-		Mat imageContours = Mat::zeros(dst.size(), CV_8UC1);
-		Mat Contours = Mat::zeros(dst.size(), CV_8UC1);
-
-		sort(contours.begin(), contours.end(), ContoursSortFun); //轮廓按面积由大至小排序
-
-		double lengthWidthRatio = 0.0; // 长宽比
-		Point pMaxPointPosition(0, 0); // 最高温位置
-
-		Rect rects1 = boundingRect(contours[0]);
-		
-		if (rects1.area() < 0.8*PointThreshold)
-		{
-			pCentroid = Point(-1, -1);
-			return false;
-		}
-
-		centroid.x = (Xsum / pointsum);
-		centroid.y = (Ysum / pointsum);
-
-		pCentroid = centroid;
-		pMaxTempPoint = point;
-
-
-		// 中心区域是否被覆盖
-		Rect rTopRect = Rect(162, 67, 60, 20);
-		Rect rMiddleRect = Rect(162, 134, 60, 20);
-		Rect rBottomRect = Rect(162, 201, 60, 20);
-	
-		Scalar MiddleValue = mean(imgBinarization(rMiddleRect));
-		float fMiddleMeanValue = MiddleValue.val[0];
-		Scalar TopValue = mean(imgBinarization(rTopRect));
-		float fTopValue = TopValue.val[0];
-		Scalar BottomValue = mean(imgBinarization(rBottomRect));
-		float fBottomMeanValue = BottomValue.val[0];
-
-		CTime tm; tm = CTime::GetCurrentTime();
-		CTimeSpan span = tm - ctInitTime[dev];
-		LONG tspan = span.GetTotalSeconds();
-
-		if (tspan > 60 && fMiddleMeanValue > 100 && fTopValue > 200 && fBottomMeanValue >100)
-		{
-			WriteTempDataFile(dev);
-
-			ctInitTime[dev] = tm;
-		}
-		return true;
-	}
-	else
-	{
-		pCentroid = centroid;
-		pMaxTempPoint = point;
-		return false;
-	}
 }
 
 
@@ -2201,20 +2267,45 @@ HBRUSH CSLTMDlg::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
 	return hbr;
 }
 
-
+int g_count_time = 0;
 void CSLTMDlg::OnTimer(UINT_PTR nIDEvent)
 {
 	// TODO: 在此添加消息处理程序代码和/或调用默认值
 	if (nIDEvent == nIDEventUpdateFPS)
 	{
-		CString csFPS;
-		csFPS.Format("%d %d %d", g_iFPS[0], g_iFPS[1], g_iFPS[2]);
+		CString csFPS, cs_temp_fps;
+        csFPS.Format("%d %d %d", g_iFPS[0], g_iFPS[1], g_iFPS[2]);
+        cs_temp_fps.Format(" %d %d %d", g_temp_frame_fps[0], g_temp_frame_fps[1], g_temp_frame_fps[2]);
+
+#ifdef HKWS
+#else
         for (int i = 0; i < 3; i++)
         {
-            g_showFPS[i] = g_iFPS[3];
+            g_showFPS[i] = g_iFPS[i];
         }
-		GetDlgItem(IDC_STATIC_STATUS)->SetWindowText(csFPS);
-		memset(g_iFPS, 0, sizeof(g_iFPS));
+        csFPS = csFPS + cs_temp_fps;
+
+        // 10s帧数为0 重启
+        if (g_iFPS[0] || g_iFPS[1] || g_iFPS[2]) // 但凡单画面温度帧为0
+        {
+            g_count_time++;
+        }
+        else
+        {
+            g_count_time = 0;
+        }
+
+        if (g_count_time == 10) // 10s不回复
+        {
+           // OnBnClickedButtonLogout();
+           // OnBnClickedButtonLogin();
+            g_count_time = 0;
+        }
+#endif
+        GetDlgItem(IDC_STATIC_STATUS)->SetWindowText(csFPS);
+        UpdateData(false);
+        memset(g_iFPS, 0, sizeof(g_iFPS));
+        memset(g_temp_frame_fps, 0, sizeof(g_temp_frame_fps));
 	}
 	else if (nIDEvent == nIDEventUpdateAlert)
 	{
@@ -2283,4 +2374,35 @@ BOOL CSLTMDlg::PreTranslateMessage(MSG* pMsg)
 		}
 	}
 	return CDialogEx::PreTranslateMessage(pMsg);
+}
+
+
+void CSLTMDlg::CaptureTemp(CString file_path, string baohao)
+{
+
+    CString folder_name;
+    CTime tm; tm = CTime::GetCurrentTime();
+    folder_name.Format("%ld", tm.GetTime());
+    folder_name = file_path + folder_name;
+    MakeDir(folder_name);
+
+    CString baonumber = CString(baohao.c_str());
+    for (int i = 0; i < 3; i++)
+    {
+        CString str;
+        str.Format(_T("%d"), i);
+        CString TempFileName = folder_name + "\\" + baonumber +"-"+ str + ".tmp";
+        CString PicFileName = folder_name + "\\" + baonumber + "-" + str + ".jpg";
+
+        string s_path((LPSTR)(LPCTSTR)PicFileName);
+
+        imwrite(s_path, g_mPicData[i]);
+        SaveSingleTemp(g_fTempData[i], TempFileName);
+    }
+    // 设置子线程 一段时间后执行
+
+    info.bao_number = atol(baohao.c_str());
+    info.time_long = tm.GetTime();
+
+    AfxBeginThread(UploadData, this);
 }
