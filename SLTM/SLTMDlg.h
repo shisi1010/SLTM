@@ -35,22 +35,22 @@ using namespace cv;
 class CameraLink
 {
 public:
-	CameraLink();
+    CameraLink();
 
-	LONG UserID = -1;
-	int llRealHandle = -1;
-	NET_DVR_USER_LOGIN_INFO struLoginInfo = { 0 };
-	NET_DVR_DEVICEINFO_V40 struDeviceInfoV40 = { 0 };
-	int DevicePort = 8000;
-	char *UserName = "admin";
-	char *Password = "dxwx12345";
-	BOOL getHotPic = FALSE;
-	LONG getUserID();
-	void setIP(char *inIP);
-	string Connect();
-	string Disconnect();
+    LONG UserID = -1;
+    int llRealHandle = -1;
+    NET_DVR_USER_LOGIN_INFO struLoginInfo = { 0 };
+    NET_DVR_DEVICEINFO_V40 struDeviceInfoV40 = { 0 };
+    int DevicePort = 8000;
+    char *UserName = "admin";
+    char *Password = "dxwx12345";
+    BOOL getHotPic = FALSE;
+    LONG getUserID();
+    void setIP(char *inIP);
+    string Connect();
+    string Disconnect();
 protected:
-	char* IP;
+    char* IP;
 };
 #endif
 
@@ -59,29 +59,29 @@ protected:
 // CSLTMDlg 对话框
 class CSLTMDlg : public CDialogEx
 {
-// 构造
+    // 构造
 public:
-	CSLTMDlg(CWnd* pParent = nullptr);	// 标准构造函数
+    CSLTMDlg(CWnd* pParent = nullptr);	// 标准构造函数
 
 // 对话框数据
 #ifdef AFX_DESIGN_TIME
-	enum { IDD = IDD_SLTM_DIALOG };
+    enum { IDD = IDD_SLTM_DIALOG };
 #endif
 
-	protected:
-	virtual void DoDataExchange(CDataExchange* pDX);	// DDX/DDV 支持
+protected:
+    virtual void DoDataExchange(CDataExchange* pDX);	// DDX/DDV 支持
 
 
 // 实现
 protected:
-	HICON m_hIcon;
+    HICON m_hIcon;
 
-	// 生成的消息映射函数
-	virtual BOOL OnInitDialog();
-	afx_msg void OnPaint();
-	afx_msg HCURSOR OnQueryDragIcon();
-	DECLARE_MESSAGE_MAP()
-	
+    // 生成的消息映射函数
+    virtual BOOL OnInitDialog();
+    afx_msg void OnPaint();
+    afx_msg HCURSOR OnQueryDragIcon();
+    DECLARE_MESSAGE_MAP()
+
 public:
     struct threadInfo
     {
@@ -89,99 +89,99 @@ public:
         long time_long;
     };
     threadInfo info;
-    CString m_file_path;
-    string m_baohao;
 
     CString m_oldFileNameA = "";
     CString m_oldFileNameB = "";
     CString m_oldFileNameC = "";
 
-	CCentroid iCentroid[3];
-	CString g_csDeviceIP[DEV_NUM];
-	
-
-	int m_DevicePort;
-	LONG lChannel;
-	LONG lRealTimeInfoHandle;
-	CString m_UserName;
-	CString m_Password;
-	CString m_StaticLog;
-	CString m_StaticTemp;
+    CCentroid iCentroid[3];
+    CString g_csDeviceIP[DEV_NUM];
 
 
-	int m_maxFrameRate;
-	BOOL m_reflectiveEnable;
-	float m_reflectiveTemp;
-	float m_emissivity;
-	int m_distance;
-	int m_refreshInterval;
-	int m_DataLength;
-	BOOL m_jpegPicEnabled;
-	BOOL m_visJpegPicEnabled;
+    int m_DevicePort;
+    LONG lChannel;
+    LONG lRealTimeInfoHandle;
+    CString m_UserName;
+    CString m_Password;
+    CString m_StaticLog;
+    CString m_StaticTemp;
 
-	BOOL ReadPara();
 
-	int GetP2PParam();
-	void JpgData2Gui(char* pJpg, int nJpgLen, int Key);
+    int m_maxFrameRate;
+    BOOL m_reflectiveEnable;
+    float m_reflectiveTemp;
+    float m_emissivity;
+    int m_distance;
+    int m_refreshInterval;
+    int m_DataLength;
+    BOOL m_jpegPicEnabled;
+    BOOL m_visJpegPicEnabled;
 
-	CStatic m_staticImage1;
-	CStatic m_staticImage2;
-	CStatic m_staticImage3;
-	
+    BOOL ReadPara();
+
+    int GetP2PParam();
+    void JpgData2Gui(char* pJpg, int nJpgLen, int Key);
+
+    void JpgData2Gui(const Mat& image, int Key);
+    CStatic m_staticImage1;
+    CStatic m_staticImage2;
+    CStatic m_staticImage3;
+
 #ifdef HKWS
-	bool b_getHotPic;
-	CameraLink clDevice[3];
+    bool b_getHotPic;
+    CameraLink clDevice[3];
 #endif
 
 
-	array<ChannelControl, 3>CameraCtrl;
+    array<ChannelControl, 3>CameraCtrl;
 
-	afx_msg HBRUSH OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor);
-	afx_msg void OnTimer(UINT_PTR nIDEvent);
+    afx_msg HBRUSH OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor);
+    afx_msg void OnTimer(UINT_PTR nIDEvent);
 
-	afx_msg void OnBnClickedButtonTestdata();
-	afx_msg void OnBnClickedButtonGetHotPic();
-	afx_msg void OnBnClickedButtonLogout();
-	afx_msg void OnBnClickedButtonLogin();
-	afx_msg void OnBnClickedButtonQuit();
-	afx_msg void OnClose();
+    afx_msg void OnBnClickedButtonTestdata();
+    afx_msg void OnBnClickedButtonGetHotPic();
+    afx_msg void OnBnClickedButtonLogout();
+    afx_msg void OnBnClickedButtonLogin();
+    afx_msg void OnBnClickedButtonQuit();
+    afx_msg void OnClose();
 
     //void HandleTempFrame(float* tempMatrix);
 
-	void HandleTempFrame(float* tempMatrix, Point &pCentroid, Point &pMaxTempPoint, float &fMaxTemp, int dev);
-	void DataTransfer(unsigned char* pBGR, int bgrLen, float* tempMatrix, int width, int height, int dev);
-	void StartHTTPServer();
+    void HandleTempFrame(float* tempMatrix, Point &pCentroid, Point &pMaxTempPoint, float &fMaxTemp, int dev);
+    void DataTransfer(unsigned char* pBGR, int bgrLen, float* tempMatrix, int width, int height, int dev);
+    void StartHTTPServer();
 
-	void SetInfraredData(char *str);
-	//bool GetCentroid(float* tempMatrix, Point &pCentroid, Point &pMaxTempPoint);
+    void SetInfraredData(char *str);
+    //bool GetCentroid(float* tempMatrix, Point &pCentroid, Point &pMaxTempPoint);
 
-	//bool GetCentroid(float* tempMatrix, Point &pCentroid, Point &pMaxTempPoint, int dev);
-	void BmpData2Gui0(unsigned char* pBits, int width, int height);
-	void BmpData2Gui1(unsigned char* pBits, int width, int height);
-	void BmpData2Gui2(unsigned char* pBits, int width, int height);
-	map<int, CStatic* >mapStaticPosition{ {0, &m_staticImage1}, {1, &m_staticImage2}, {2, &m_staticImage3} };
-	void BmpData2Gui(unsigned char* pBits, int width, int height, int position);
+    bool GetCentroid(float* tempMatrix, Point &pCentroid, Point &pMaxTempPoint, int dev);
+    void BmpData2Gui0(unsigned char* pBits, int width, int height);
+    void BmpData2Gui1(unsigned char* pBits, int width, int height);
+    void BmpData2Gui2(unsigned char* pBits, int width, int height);
+    map<int, CStatic* >mapStaticPosition{ {0, &m_staticImage1}, {1, &m_staticImage2}, {2, &m_staticImage3} };
+    void BmpData2Gui(unsigned char* pBits, int width, int height, int position);
 
-	CBrush m_brushBack;
+    CBrush m_brushBack;
 
     void GetTimeList();
 
     void cmptime(CTime t_local, CString csCmp, CString &m_oldFileName, CString &m_newFileName);
     void WriteTempDataFile(int n);
-	void CheackFileMove(__time64_t tName, int dev);
-	void MoveFileAndRename(int pos);
-	void deleteUselessFile();
-	// onTimer
-	UINT_PTR nIDEventUpdateFPS = 1;
-	UINT_PTR nIDEventUpdateAlert = 2;
-	UINT_PTR nIDEventCheakFile = 3;
-	UINT_PTR nIDEventCheakFile2 = 4;
-	UINT_PTR nIDEventCheakFile3 = 5;
+    void CheackFileMove(__time64_t tName, int dev);
+    void MoveFileAndRename(int pos);
+    void deleteUselessFile();
+    // onTimer
+    UINT_PTR nIDEventUpdateFPS = 1;
+    UINT_PTR nIDEventUpdateAlert = 2;
+    UINT_PTR nIDEventCheakFile = 3;
+    UINT_PTR nIDEventCheakFile2 = 4;
+    UINT_PTR nIDEventCheakFile3 = 5;
 
-	UINT m_nDeleteFileTimer;
-	UINT_PTR nIDEventDeleteFile = 6;
+    UINT m_nDeleteFileTimer;
+    UINT_PTR nIDEventDeleteFile = 6;
     UINT_PTR nIDEventGetTimeList = 7;
-	virtual BOOL PreTranslateMessage(MSG* pMsg);
+    virtual BOOL PreTranslateMessage(MSG* pMsg);
     void CaptureTemp(CString file_path, string baohao);
+    void MakeDirWithTimeString(string baohao);
 };
 

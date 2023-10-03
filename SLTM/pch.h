@@ -11,4 +11,5 @@
 #include "framework.h"
 #define DEV_NUM 3
 //#define HKWS 1
+//#define ASYNC 1
 #endif //PCH_H

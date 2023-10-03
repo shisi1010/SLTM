@@ -11,7 +11,7 @@
 #define new DEBUG_NEW
 #endif
 
-
+#define SINGLE_INSTANCE_GUID "{12345678-1234-5678-9012-345678901234}"
 // CSLTMApp
 
 BEGIN_MESSAGE_MAP(CSLTMApp, CWinApp)
@@ -40,6 +40,14 @@ CSLTMApp theApp;
 
 BOOL CSLTMApp::InitInstance()
 {
+
+    HANDLE hMutex = CreateMutex(NULL, TRUE, SINGLE_INSTANCE_GUID);
+    if (GetLastError() == ERROR_ALREADY_EXISTS) {
+        // 如果互斥体已经存在，则退出应用程序
+        CloseHandle(hMutex);
+        return FALSE;
+    }
+
 	// 如果一个运行在 Windows XP 上的应用程序清单指定要
 	// 使用 ComCtl32.dll 版本 6 或更高版本来启用可视化方式，
 	//则需要 InitCommonControlsEx()。  否则，将无法创建窗口。
@@ -111,3 +119,15 @@ BOOL CSLTMApp::InitInstance()
 	return FALSE;
 }
 
+
+
+int CSLTMApp::ExitInstance()
+{
+    // TODO: 在此添加专用代码和/或调用基类
+        // 释放互斥体
+    HANDLE hMutex = OpenMutex(MUTEX_ALL_ACCESS, NULL, SINGLE_INSTANCE_GUID);
+    if (hMutex != NULL) {
+        CloseHandle(hMutex);
+    }
+    return CWinApp::ExitInstance();
+}

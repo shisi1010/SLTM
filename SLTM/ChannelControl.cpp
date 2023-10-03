@@ -735,7 +735,7 @@ bool ChannelControl::ConnectIp(char* ip, int wndIndex)
 	//////////////////////////////
 	openParams._rawStream._bOpen = 1;
 	openParams._rawStream._bOverTcp = 1;			//1:TCP  0:UDP
-	openParams._rawStream._nIniFPS = 5;//这个是原始帧帧率，对应的 CallbackGetInfraredData
+	openParams._rawStream._nIniFPS = 1;//这个是原始帧帧率，对应的 CallbackGetInfraredData
 	//超时时间
 	openParams._ConnectTimeOut = 3000;
 	//SCT_ChannelSetOpt(  _hChanne1 ,   OT_SetFunGetEvent ,   CallbackGetEvent);
